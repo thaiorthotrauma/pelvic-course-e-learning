@@ -280,7 +280,6 @@
     #player {
       display: block; width: 100%;
       aspect-ratio: 16/9; max-height: 56vh; border: none;
-      pointer-events: none; /* prevents seeking/skipping */
     }
 
     /* Interaction shield — blocks all clicks on iframe to prevent seeking */
@@ -876,13 +875,25 @@
 
     document.getElementById('hero-placeholder').style.display = 'none';
 
-    const wrap = document.getElementById('player-wrap');
+    const wrap   = document.getElementById('player-wrap');
+    const shield = document.getElementById('player-shield');
     wrap.style.display = 'block';
-    document.getElementById('player').src = `https://drive.google.com/file/d/${fileId}/preview`;
+
+    // ?autoplay=1 triggers play immediately after user gesture (card click)
+    document.getElementById('player').src =
+      `https://drive.google.com/file/d/${fileId}/preview?autoplay=1`;
 
     const bar = document.getElementById('now-playing-bar');
     bar.style.display = 'flex';
     document.getElementById('now-playing-title').textContent = cleanName(fileName);
+
+    // Briefly lift shield so the Drive play button is clickable if autoplay is blocked,
+    // then restore it to prevent seeking for the rest of the session
+    shield.style.pointerEvents = 'none';
+    clearTimeout(window._shieldTimer);
+    window._shieldTimer = setTimeout(() => {
+      shield.style.pointerEvents = 'auto';
+    }, 4000);
 
     // Reset mark-complete button
     const btn = document.getElementById('mark-complete-btn');
