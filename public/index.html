@@ -282,10 +282,15 @@
       aspect-ratio: 16/9; max-height: 56vh; border: none;
     }
 
-    /* Interaction shield — blocks all clicks on iframe to prevent seeking */
+    /* Bottom shield — covers ONLY the Drive seek/progress bar (~50px).
+       Centre of iframe (play button) stays fully clickable. */
     #player-shield {
-      position: absolute; inset: 0; z-index: 5;
-      background: transparent; cursor: default;
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 52px;          /* just enough to hide the Drive seek bar */
+      z-index: 5;
+      background: #000;      /* matches Drive player background */
+      cursor: default;
     }
 
     /* Now playing bar */
@@ -320,18 +325,23 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
     }
 
-    /* Mark complete button */
+    /* Watch to complete button */
     #mark-complete-btn {
-      display: none; background: var(--green); border: none;
+      display: flex; background: var(--muted); border: none;
       border-radius: 6px; color: white; font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 13px; font-weight: 700; letter-spacing: 0.3px;
-      padding: 0 14px; height: 32px; cursor: pointer;
+      padding: 0 14px; height: 32px; cursor: not-allowed;
       align-items: center; gap: 5px; white-space: nowrap;
-      transition: background 0.15s, transform 0.1s; flex-shrink: 0;
+      transition: background 0.3s, transform 0.1s; flex-shrink: 0;
+      opacity: 0.6;
     }
 
-    #mark-complete-btn:hover { background: #16a34a; transform: translateY(-1px); }
-    #mark-complete-btn.visible { display: flex; }
+    #mark-complete-btn.ready {
+      background: var(--green);
+      cursor: pointer;
+      opacity: 1;
+    }
+    #mark-complete-btn.ready:hover { background: #16a34a; transform: translateY(-1px); }
 
     /* ── COMPLETION BANNER ── */
     #completion-banner {
@@ -641,8 +651,7 @@
         <div class="np-divider"></div>
         <span id="now-playing-title"></span>
         <button id="mark-complete-btn" onclick="markCurrentComplete()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><polyline points="20,6 9,17 4,12"/></svg>
-          Mark Complete
+          ⏳ Watch to complete
         </button>
       </div>
     </div>
@@ -875,54 +884,44 @@
 
     document.getElementById('hero-placeholder').style.display = 'none';
 
-    const wrap   = document.getElementById('player-wrap');
-    const shield = document.getElementById('player-shield');
+    const wrap = document.getElementById('player-wrap');
     wrap.style.display = 'block';
 
-    // ?autoplay=1 triggers play immediately after user gesture (card click)
-    document.getElementById('player').src =
-      `https://drive.google.com/file/d/${fileId}/preview?autoplay=1`;
+    // Reload src to force play; autoplay=1 works because this is triggered by a real click
+    const iframe = document.getElementById('player');
+    iframe.src = `https://drive.google.com/file/d/${fileId}/preview?autoplay=1`;
 
-    const bar = document.getElementById('now-playing-bar');
-    bar.style.display = 'flex';
+    document.getElementById('now-playing-bar').style.display = 'flex';
     document.getElementById('now-playing-title').textContent = cleanName(fileName);
 
-    // Briefly lift shield so the Drive play button is clickable if autoplay is blocked,
-    // then restore it to prevent seeking for the rest of the session
-    shield.style.pointerEvents = 'none';
-    clearTimeout(window._shieldTimer);
-    window._shieldTimer = setTimeout(() => {
-      shield.style.pointerEvents = 'auto';
-    }, 4000);
-
-    // Reset mark-complete button
+    // Button: show as disabled "Watch to complete", enable after MIN_WATCH_SECONDS
     const btn = document.getElementById('mark-complete-btn');
-    btn.classList.remove('visible');
+    btn.classList.remove('ready');
 
-    refreshCards();
-
-    // Watch timer → show "Mark Complete" after MIN_WATCH_SECONDS
-    clearInterval(watchTimer);
-    watchSeconds = 0;
-    if (!completed.has(fileId)) {
+    if (completed.has(fileId)) {
+      // Already completed — allow re-marking immediately
+      btn.textContent = '✓ Mark Complete Again';
+      btn.classList.add('ready');
+    } else {
+      btn.textContent = '⏳ Watch to complete';
+      clearInterval(watchTimer);
+      watchSeconds = 0;
       watchTimer = setInterval(() => {
         watchSeconds++;
-        if (watchSeconds >= MIN_WATCH_SECONDS) {
-          btn.classList.add('visible');
+        const remaining = MIN_WATCH_SECONDS - watchSeconds;
+        if (remaining > 0) {
+          btn.textContent = `⏳ Watch to complete (${remaining}s)`;
+        } else {
+          btn.textContent = '✓ Mark Complete';
+          btn.classList.add('ready');
           clearInterval(watchTimer);
         }
       }, 1000);
-    } else {
-      btn.classList.add('visible'); // already done, can re-mark
     }
 
-    // Auto-fullscreen
-    setTimeout(() => {
-      const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.mozRequestFullScreen;
-      if (req) req.call(wrap).catch(() => {});
-    }, 400);
+    refreshCards();
 
-    // Scroll to player on mobile
+    // Scroll to player
     document.querySelector('.hero-banner').scrollIntoView({ behavior: 'smooth' });
   }
 
@@ -931,12 +930,15 @@
   ═══════════════════════════════════════════════════════ */
   function markCurrentComplete() {
     if (!currentFileId) return;
+    if (!document.getElementById('mark-complete-btn').classList.contains('ready')) return;
+
     completed.add(currentFileId);
     saveProgress();
     updateProgressBar();
     refreshCards();
 
-    document.getElementById('mark-complete-btn').classList.remove('visible');
+    const btn = document.getElementById('mark-complete-btn');
+    btn.textContent = '✓ Done';
     showToast('Lesson marked as complete ✓', 'success');
 
     // Check course completion
