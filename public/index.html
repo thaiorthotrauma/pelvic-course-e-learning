@@ -82,11 +82,11 @@
     @keyframes ripple { 0% { transform: scale(0.85); opacity: 0.8; } 100% { transform: scale(1.3); opacity: 0; } }
     #hero-placeholder p { font-size: 14px; color: rgba(147,197,253,0.45); letter-spacing: 0.5px; }
 
-    #player-wrap { display: none; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid rgba(147,197,253,0.15); border-bottom: none; box-shadow: 0 -8px 40px rgba(13,27,62,0.3); position: relative; background: #000; aspect-ratio: 16/9; max-height: 56vh; }
+    #player-wrap { display: none; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid rgba(147,197,253,0.15); border-bottom: none; box-shadow: 0 -8px 40px rgba(13,27,62,0.3); position: relative; background: #000; aspect-ratio: 16/9; width: 100%; }
 
     /* Video.js navy theme */
     #vjs-player { width: 100%; height: 100%; }
-    .video-js { width: 100%; height: 100%; background: #000; }
+    .video-js { width: 100% !important; height: 100% !important; background: #000; max-height: 56vh; }
     .video-js .vjs-control-bar { background: linear-gradient(transparent, rgba(13,27,62,0.95)); height: 42px; }
     .video-js .vjs-play-progress,
     .video-js .vjs-volume-level { background: #2563eb; }
@@ -418,7 +418,6 @@
 
     // Request Drive + Gmail scopes, then load videos
     getDriveToken(() => {
-      createVjsPlayer();
       loadVideos();
     }, (err) => {
       document.getElementById('loading').style.display = 'none';
@@ -488,10 +487,14 @@
   /* ═══════════ VIDEO.JS PLAYER ═══════════ */
   function createVjsPlayer() {
     if (vjsPlayer) return;
+
+    // #player-wrap must already be display:block before this is called
+    // so Video.js can measure real dimensions
     vjsPlayer = videojs('vjs-player', {
-      controls: true,
-      preload:  'metadata',
-      fluid:    false,
+      controls:  true,
+      preload:   'auto',
+      fluid:     false,          // CSS handles sizing — do NOT let VJS resize the element
+      responsive: false,         // same — CSS only
       playbackRates: [0.75, 1, 1.25, 1.5],
       controlBar: { pictureInPictureToggle: false },
     });
@@ -547,15 +550,16 @@
     /* Token expiry / network error recovery: reload src with fresh token */
     vjsPlayer.on('error', () => {
       const err = vjsPlayer.error();
-      // code 2 = network error (401 token expiry), code 4 = src not supported
+      // code 2 = network error (401 token expiry), code 4 = src not supported / CORS
       if (err && (err.code === 2 || err.code === 4) && currentVideoId) {
         showToast('Refreshing session…', '');
-        // Use saved resume position — currentTime() is unreliable after an error
         const savedPos = loadResumePositions()[currentVideoId] || 0;
         getDriveToken(() => {
-          const idx = allVideos.findIndex(v => v.driveId === currentVideoId);
-          if (idx >= 0) loadVideoSrc(allVideos[idx], savedPos);
+          const vid = allVideos.find(v => v.driveId === currentVideoId);
+          if (vid) loadVideoSrc(vid, savedPos);
         }, () => showToast('Session expired. Please sign out and sign back in.', 'error'));
+      } else if (err) {
+        showToast('Video error (code ' + (err.code || '?') + '): ' + (err.message || 'unknown'), 'error');
       }
     });
   }
@@ -566,20 +570,38 @@
 
   // Tracks the current loadedmetadata listener so we can remove it before adding a new one
   let metadataListener = null;
+  let metadataTimeout  = null;
 
   function loadVideoSrc(video, startAt) {
-    // Remove any pending loadedmetadata listener from a previous load
+    // Clear any pending listener + timeout from a previous load
     if (metadataListener) {
       vjsPlayer.off('loadedmetadata', metadataListener);
       metadataListener = null;
     }
+    clearTimeout(metadataTimeout);
 
     vjsPlayer.src({ src: driveStreamUrl(video.driveId), type: 'video/mp4' });
+    vjsPlayer.load();
+
+    // Timeout: if loadedmetadata doesn't fire within 12 s, something is wrong
+    metadataTimeout = setTimeout(() => {
+      if (metadataListener) {
+        vjsPlayer.off('loadedmetadata', metadataListener);
+        metadataListener = null;
+        showToast('Video failed to load — check Drive permissions or try again.', 'error');
+      }
+    }, 12000);
 
     metadataListener = () => {
+      clearTimeout(metadataTimeout);
       metadataListener = null;
       if (startAt > 1) vjsPlayer.currentTime(startAt);
-      vjsPlayer.play().catch(() => {});
+      vjsPlayer.play().catch((e) => {
+        // NotAllowedError = autoplay blocked — user can press the big play button, that's fine
+        if (e.name !== 'NotAllowedError') {
+          showToast('Playback error: ' + e.message, 'error');
+        }
+      });
     };
     vjsPlayer.one('loadedmetadata', metadataListener);
   }
@@ -599,21 +621,28 @@
       showToast('Complete the previous lesson first.', 'error'); return;
     }
     const video = allVideos[index];
-    if (!vjsPlayer || !playerReady) {
+
+    // Show the player container FIRST — Video.js must see real dimensions on init
+    document.getElementById('hero-placeholder').style.display = 'none';
+    document.getElementById('player-wrap').style.display      = 'block';
+
+    // Lazy-init: create Video.js only now that the container is visible
+    if (!vjsPlayer) {
+      createVjsPlayer();
+    }
+
+    // If player not yet ready, queue and wait
+    if (!playerReady) {
       pendingVideoIndex = index;
       showToast('Player is loading — your video will start shortly…', '');
       return;
     }
 
-    currentVideoId = video.driveId;
-    const resumeAt = loadResumePositions()[currentVideoId] || 0;
-    // Completed videos: allow free seeking (no restriction). In-progress: watermark from resume point.
+    currentVideoId  = video.driveId;
+    const resumeAt  = loadResumePositions()[currentVideoId] || 0;
     maxReachedTime  = completed.has(video.driveId) ? Infinity : resumeAt;
     isSeeking       = false;
     clearTimeout(saveThrottle); saveThrottle = null;
-
-    document.getElementById('hero-placeholder').style.display = 'none';
-    document.getElementById('player-wrap').style.display      = 'block';
 
     loadVideoSrc(video, resumeAt);
 
@@ -715,7 +744,7 @@
   async function loadVideos() {
     try {
       const q   = encodeURIComponent(`'${FOLDER_ID}' in parents and trashed = false and mimeType contains 'video/'`);
-      const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&orderBy=name&pageSize=50`;
+      const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&orderBy=name&pageSize=50`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${currentUser.accessToken}` } });
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
@@ -731,8 +760,9 @@
       }
 
       allVideos = files.slice(0, 18).map((file, i) => ({
-        driveId: file.id,
-        meta:    VIDEO_META[i] || { title: `Video ${i+1}`, subtitle: '', instructor: '' },
+        driveId:  file.id,
+        mimeType: file.mimeType || 'video/mp4',
+        meta:     VIDEO_META[i] || { title: `Video ${i+1}`, subtitle: '', instructor: '' },
       }));
 
       document.getElementById('loading').style.display = 'none';
