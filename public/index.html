@@ -82,11 +82,11 @@
     @keyframes ripple { 0% { transform: scale(0.85); opacity: 0.8; } 100% { transform: scale(1.3); opacity: 0; } }
     #hero-placeholder p { font-size: 14px; color: rgba(147,197,253,0.45); letter-spacing: 0.5px; }
 
-    #player-wrap { display: none; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid rgba(147,197,253,0.15); border-bottom: none; box-shadow: 0 -8px 40px rgba(13,27,62,0.3); position: relative; background: #000; aspect-ratio: 16/9; width: 100%; }
+    #player-wrap { display: none; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid rgba(147,197,253,0.15); border-bottom: none; box-shadow: 0 -8px 40px rgba(13,27,62,0.3); position: relative; background: #000; aspect-ratio: 16/9; max-height: 56vh; width: 100%; }
 
     /* Video.js navy theme */
     #vjs-player { width: 100%; height: 100%; }
-    .video-js { width: 100% !important; height: 100% !important; background: #000; max-height: 56vh; }
+    .video-js { width: 100% !important; height: 100% !important; background: #000; }
     .video-js .vjs-control-bar { background: linear-gradient(transparent, rgba(13,27,62,0.95)); height: 42px; }
     .video-js .vjs-play-progress,
     .video-js .vjs-volume-level { background: #2563eb; }
@@ -447,13 +447,20 @@
   }
 
   function getDriveToken(onSuccess, onFail) {
-    tokenClient.callback = (res) => {
-      if (res.access_token) { currentUser.accessToken = res.access_token; onSuccess(); }
-      else { onFail('Permission denied.'); }
+    const tryPrompt = (prompt) => {
+      tokenClient.callback = (res) => {
+        if (res.access_token) { currentUser.accessToken = res.access_token; onSuccess(); }
+        else { onFail('Permission denied.'); }
+      };
+      tokenClient.error_callback = (e) => {
+        // If silent refresh failed, try again with full consent UI
+        if (prompt === 'none') { tryPrompt('consent'); }
+        else { onFail(e?.message || 'Token error'); }
+      };
+      tokenClient.requestAccessToken({ prompt });
     };
-    tokenClient.error_callback = (e) => onFail(e?.message || 'Token error');
-    // Silent refresh if we already have a token; consent popup on first request
-    tokenClient.requestAccessToken({ prompt: currentUser.accessToken ? '' : 'consent' });
+    // Use silent refresh if we already have a token, consent popup for first request
+    tryPrompt(currentUser.accessToken ? 'none' : 'consent');
   }
 
   /* ═══════════ PROGRESS ═══════════ */
@@ -549,6 +556,13 @@
 
     /* Token expiry / network error recovery: reload src with fresh token */
     vjsPlayer.on('error', () => {
+      // Always clear the load timeout — the error handler takes over from here
+      clearTimeout(metadataTimeout);
+      if (metadataListener) {
+        vjsPlayer.off('loadedmetadata', metadataListener);
+        metadataListener = null;
+      }
+
       const err = vjsPlayer.error();
       // code 2 = network error (401 token expiry), code 4 = src not supported / CORS
       if (err && (err.code === 2 || err.code === 4) && currentVideoId) {
@@ -565,6 +579,9 @@
   }
 
   function driveStreamUrl(fileId) {
+    // NOTE: We cannot use Authorization header for <video src> streaming — browsers
+    // don't allow custom headers on media elements. The token-in-URL approach is
+    // necessary here. Tokens are short-lived (~1 hour) which limits exposure.
     return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&access_token=${currentUser.accessToken}`;
   }
 
@@ -580,8 +597,7 @@
     }
     clearTimeout(metadataTimeout);
 
-    vjsPlayer.src({ src: driveStreamUrl(video.driveId), type: 'video/mp4' });
-    vjsPlayer.load();
+    vjsPlayer.src({ src: driveStreamUrl(video.driveId), type: video.mimeType || 'video/mp4' });
 
     // Timeout: if loadedmetadata doesn't fire within 12 s, something is wrong
     metadataTimeout = setTimeout(() => {
@@ -628,7 +644,13 @@
 
     // Lazy-init: create Video.js only now that the container is visible
     if (!vjsPlayer) {
-      createVjsPlayer();
+      try {
+        createVjsPlayer();
+      } catch (e) {
+        pendingVideoIndex = null;
+        showToast('Player failed to initialise: ' + e.message, 'error');
+        return;
+      }
     }
 
     // If player not yet ready, queue and wait
@@ -678,6 +700,11 @@
   const videoIconSVG = () =>
     `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"><rect x="2" y="3" width="15" height="15" rx="2"/><polygon points="17,8 22,5 22,16 17,13"/></svg>`;
 
+  // Escape HTML to prevent XSS when injecting dynamic strings into innerHTML
+  function esc(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   function refreshCards() {
     document.querySelectorAll('.video-card').forEach((card) => {
       const i       = parseInt(card.dataset.index, 10);
@@ -720,14 +747,14 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="#0d1b3e" style="margin-left:3px"><polygon points="5,3 19,12 5,21"/></svg>
             </div>
           </div>
-          <div class="status-badge lesson">${video.meta.title}</div>
+          <div class="status-badge lesson">${esc(video.meta.title)}</div>
         </div>
         <div class="video-info">
-          <div class="video-title-label">${video.meta.title}</div>
-          <div class="video-subtitle">${video.meta.subtitle}</div>
+          <div class="video-title-label">${esc(video.meta.title)}</div>
+          <div class="video-subtitle">${esc(video.meta.subtitle)}</div>
           <div class="video-instructor">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-            ${video.meta.instructor}
+            ${esc(video.meta.instructor)}
           </div>
         </div>`;
       grid.appendChild(card);
@@ -827,7 +854,11 @@
       headers: { Authorization: `Bearer ${currentUser.accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ raw: encoded }),
     });
-    if (!r.ok) throw new Error((await r.json()).error?.message || 'Send failed');
+    if (!r.ok) {
+      let msg = 'Send failed';
+      try { msg = (await r.json()).error?.message || msg; } catch (_) { msg = `Send failed (HTTP ${r.status})`; }
+      throw new Error(msg);
+    }
   }
 
   function buildCertEmail(date) {
