@@ -591,6 +591,14 @@
 
         dmPlayer.addEventListener('apiready', () => {
           dmReady = true;
+          // Explicitly seek to resume position after player is ready.
+          // The 'start' URL param alone is unreliable — this guarantees it.
+          if (startAt > 2) {
+            dmPlayer.seek(startAt);
+            const mins = Math.floor(startAt / 60);
+            const secs = String(Math.floor(startAt % 60)).padStart(2, '0');
+            showToast(`Resuming from ${mins}:${secs}`, 'success');
+          }
           startSeekPoll();
         });
 
@@ -611,6 +619,9 @@
           // Use seekTime from event, fallback to lastKnownTime
           const seekTarget = e?.videoCurrentTime ?? lastKnownTime;
           if (typeof seekTarget === 'number' && seekTarget > maxReachedTime + 1.5) {
+            // Save the real position before snapping back
+            const meta = VIDEO_META[currentVideoIdx];
+            if (meta?.dmId) saveResumePosition(meta.dmId, maxReachedTime);
             isSeeking = true;
             dmPlayer.seek(maxReachedTime);
             showToast('You cannot skip ahead — watch to unlock.', 'error');
@@ -629,6 +640,15 @@
           if (isSeeking) return;
           const meta = VIDEO_META[currentVideoIdx];
           if (meta?.dmId) saveResumePosition(meta.dmId, lastKnownTime);
+        });
+
+        dmPlayer.addEventListener('play', () => {
+          // Save when playback starts — ensures resume position is recorded
+          // even if the user immediately closes the tab after unpausing
+          const meta = VIDEO_META[currentVideoIdx];
+          if (meta?.dmId && lastKnownTime > 0) {
+            saveResumePosition(meta.dmId, lastKnownTime);
+          }
         });
 
         dmPlayer.addEventListener('error', (e) => {
