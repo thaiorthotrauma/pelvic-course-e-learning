@@ -579,26 +579,54 @@
       if (typeof DM === 'undefined' || !DM.Player) return;
       try {
         dmPlayer = new DM.Player(iframe);
+
         dmPlayer.addEventListener('apiready', () => {
           dmReady = true;
-          startSeekPoll();
+          startSeekPoll();   // backup poll in case events are unreliable
         });
+
+        // ── Instant seek prevention (event-driven) ──
+        // Fires the moment a seek is attempted — snap back immediately
+        dmPlayer.addEventListener('seeking', () => {
+          if (isSeeking || maxReachedTime === Infinity) return;
+          const t = dmPlayer.currentTime;
+          if (typeof t === 'number' && !isNaN(t) && t > maxReachedTime + 1.5) {
+            isSeeking = true;
+            dmPlayer.seek(maxReachedTime);   // DM SDK method is seek(), not seekTo()
+            showToast('You cannot skip ahead — watch to unlock.', 'error');
+            setTimeout(() => { isSeeking = false; }, 600);
+          }
+        });
+
+        // ── Watermark tracking via timeupdate ──
+        dmPlayer.addEventListener('timeupdate', () => {
+          if (isSeeking) return;
+          const t = dmPlayer.currentTime;
+          if (typeof t === 'number' && !isNaN(t) && t > maxReachedTime) {
+            maxReachedTime = t;
+          }
+        });
+
         dmPlayer.addEventListener('end', () => {
           stopSeekPoll();
           const meta = VIDEO_META[currentVideoIdx];
           if (meta?.dmId) clearResumePosition(meta.dmId);
           if (!completed.has(meta?.dmId)) setBtnState('ready');
         });
+
         dmPlayer.addEventListener('pause', () => {
+          if (isSeeking) return;
           const meta = VIDEO_META[currentVideoIdx];
           if (meta?.dmId && typeof dmPlayer.currentTime === 'number') {
             saveResumePosition(meta.dmId, dmPlayer.currentTime);
           }
         });
+
         dmPlayer.addEventListener('error', (e) => {
           showToast('Video error — please try again.', 'error');
           console.warn('DM player error:', e);
         });
+
       } catch(e) {
         console.warn('DM.Player attach failed:', e);
       }
@@ -613,7 +641,9 @@
     }
   }
 
-  /* ── Seek prevention poll every 500ms ── */
+  /* ── Seek prevention backup poll (500ms) ──
+     Primary prevention is the 'seeking' event above.
+     This poll catches any slips that the event misses. ── */
   function startSeekPoll() {
     stopSeekPoll();
     seekPollInterval = setInterval(() => {
@@ -623,19 +653,17 @@
 
       // Save resume position (throttled to every 3 s)
       const meta = VIDEO_META[currentVideoIdx];
-      if (meta?.dmId) {
-        if (!saveThrottle) {
-          saveThrottle = setTimeout(() => {
-            if (meta?.dmId) saveResumePosition(meta.dmId, dmPlayer.currentTime);
-            saveThrottle = null;
-          }, 3000);
-        }
+      if (meta?.dmId && !saveThrottle) {
+        saveThrottle = setTimeout(() => {
+          if (meta?.dmId && dmPlayer) saveResumePosition(meta.dmId, dmPlayer.currentTime);
+          saveThrottle = null;
+        }, 3000);
       }
 
-      // Snap back if jumped ahead — correct DM API method is seekTo(), not seek()
+      // Backup snap-back if seeking event was missed
       if (maxReachedTime !== Infinity && t > maxReachedTime + 2) {
         isSeeking = true;
-        dmPlayer.seekTo(maxReachedTime);
+        dmPlayer.seek(maxReachedTime);   // DM SDK method is seek()
         showToast('You cannot skip ahead — watch to unlock.', 'error');
         setTimeout(() => { isSeeking = false; }, 600);
       } else if (t > maxReachedTime) {
