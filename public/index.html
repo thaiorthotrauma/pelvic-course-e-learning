@@ -88,6 +88,7 @@
 
     /* Dailymotion iframe wrapper */
     #player-wrap { display: none; border-radius: 12px 12px 0 0; overflow: hidden; border: 1px solid rgba(147,197,253,0.15); border-bottom: none; box-shadow: 0 -8px 40px rgba(13,27,62,0.3); position: relative; background: #000; aspect-ratio: 16/9; max-height: 56vh; width: 100%; }
+    #player-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; display: block; }
     /* ── NOW PLAYING BAR ── */
     .now-playing-bar { display: none; background: var(--navy); border-radius: 0 0 12px 12px; padding: 0 16px; height: 44px; align-items: center; gap: 10px; border: 1px solid rgba(147,197,253,0.15); border-top: 1px solid rgba(255,255,255,0.07); }
     .np-pulse { width: 6px; height: 6px; background: var(--green); border-radius: 50%; flex-shrink: 0; animation: glow 1.8s ease infinite; }
@@ -523,6 +524,12 @@
     if (document.getElementById('dm-sdk')) return;
     // dmAsyncInit must be defined BEFORE the SDK script loads — it is the SDK's own init hook
     window.dmAsyncInit = () => {
+      // Call any pending player event attachment (if player was created before SDK loaded)
+      if (typeof window._dmPendingAttach === 'function') {
+        window._dmPendingAttach();
+        window._dmPendingAttach = null;
+      }
+      // Resume any video click that was queued while SDK was loading
       if (pendingIdx !== null) {
         const idx = pendingIdx; pendingIdx = null;
         playVideo(idx);
@@ -536,7 +543,7 @@
   }
 
   function createDMPlayer(dmId, startAt) {
-    // Destroy existing player cleanly before creating a new one
+    // Destroy existing player cleanly
     if (dmPlayer) {
       try { dmPlayer.pause(); } catch(e) {}
       dmPlayer = null;
@@ -545,49 +552,65 @@
     stopSeekPoll();
     isSeeking = false;
 
-    // DM.player() requires a container <div>, not an <iframe>.
-    // Replace the iframe with a fresh div each time to avoid stale state.
     const wrap = document.getElementById('player-wrap');
-    wrap.innerHTML = '<div id="dm-container"></div>';
 
-    // Use DM SDK to create the player — this inserts its own iframe into #dm-container
-    dmPlayer = DM.player(document.getElementById('dm-container'), {
-      video:  dmId,
-      width:  '100%',
-      height: '100%',
-      params: {
-        autoplay:         1,
-        controls:         1,
-        'queue-enable':   0,
-        'sharing-enable': 0,
-        'ui-logo':        0,
-        start:            Math.floor(startAt),
-      },
+    // Step 1: Create the iframe directly with embed URL — this always works
+    // and is visible immediately regardless of SDK state.
+    const params = new URLSearchParams({
+      autoplay:         1,
+      controls:         1,
+      'queue-enable':   0,
+      'sharing-enable': 0,
+      'ui-logo':        0,
+      start:            Math.floor(startAt),
     });
+    const iframe = document.createElement('iframe');
+    iframe.id                  = 'dm-iframe';
+    iframe.style.cssText       = 'width:100%;height:100%;display:block;border:none;position:absolute;inset:0;';
+    iframe.allow               = 'autoplay; fullscreen';
+    iframe.allowFullscreen     = true;
+    iframe.src                 = `https://www.dailymotion.com/embed/video/${dmId}?${params}`;
+    wrap.innerHTML             = '';   // clear previous
+    wrap.appendChild(iframe);
 
-    dmPlayer.addEventListener('apiready', () => {
-      dmReady = true;
-      startSeekPoll();
-    });
-
-    dmPlayer.addEventListener('end', () => {
-      stopSeekPoll();
-      const meta = VIDEO_META[currentVideoIdx];
-      if (meta?.dmId) clearResumePosition(meta.dmId);
-      if (!completed.has(meta?.dmId)) setBtnState('ready');
-    });
-
-    dmPlayer.addEventListener('pause', () => {
-      const meta = VIDEO_META[currentVideoIdx];
-      if (meta?.dmId && typeof dmPlayer.currentTime === 'number') {
-        saveResumePosition(meta.dmId, dmPlayer.currentTime);
+    // Step 2: Attach DM.Player to the iframe for event API (seek prevention, end, pause)
+    // DM SDK may or may not be loaded yet — only attach if available.
+    function attachDMEvents() {
+      if (typeof DM === 'undefined' || !DM.Player) return;
+      try {
+        dmPlayer = new DM.Player(iframe);
+        dmPlayer.addEventListener('apiready', () => {
+          dmReady = true;
+          startSeekPoll();
+        });
+        dmPlayer.addEventListener('end', () => {
+          stopSeekPoll();
+          const meta = VIDEO_META[currentVideoIdx];
+          if (meta?.dmId) clearResumePosition(meta.dmId);
+          if (!completed.has(meta?.dmId)) setBtnState('ready');
+        });
+        dmPlayer.addEventListener('pause', () => {
+          const meta = VIDEO_META[currentVideoIdx];
+          if (meta?.dmId && typeof dmPlayer.currentTime === 'number') {
+            saveResumePosition(meta.dmId, dmPlayer.currentTime);
+          }
+        });
+        dmPlayer.addEventListener('error', (e) => {
+          showToast('Video error — please try again.', 'error');
+          console.warn('DM player error:', e);
+        });
+      } catch(e) {
+        console.warn('DM.Player attach failed:', e);
       }
-    });
+    }
 
-    dmPlayer.addEventListener('error', (e) => {
-      showToast('Video error — please try again.', 'error');
-      console.warn('DM player error:', e);
-    });
+    // If SDK already loaded, attach immediately; otherwise wait for dmAsyncInit
+    if (typeof DM !== 'undefined') {
+      attachDMEvents();
+    } else {
+      // Store for dmAsyncInit to call after SDK loads
+      window._dmPendingAttach = attachDMEvents;
+    }
   }
 
   /* ── Seek prevention poll every 500ms ── */
