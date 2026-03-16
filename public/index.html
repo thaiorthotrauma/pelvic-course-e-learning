@@ -491,6 +491,12 @@
     document.getElementById('user-avatar').src = currentUser.picture;
 
     // Load progress + resume positions from Supabase
+    // Test connection first — surface any auth/RLS issues visibly
+    const { error: testError } = await _db.from('progress').select('id').limit(1);
+    if (testError) {
+      showToast('⚠ Database error: ' + testError.message, 'error');
+      console.error('Supabase connection test failed:', testError);
+    }
     await Promise.all([loadProgress(), loadResumePositions()]);
 
     loadDailymotionSDK();
@@ -557,19 +563,30 @@
       .from('progress')
       .select('dm_id')
       .eq('user_email', currentUser.email);
-    if (error) { console.warn('loadProgress error:', error.message); return; }
+    if (error) {
+      console.error('loadProgress error:', error);
+      showToast('⚠ Could not load progress: ' + error.message, 'error');
+      return;
+    }
+    console.log('loadProgress: loaded', data.length, 'rows');
     completed = new Set(data.map(r => r.dm_id));
   }
 
   function markDone(dmId) {
     completed.add(dmId);
-    // Upsert instead of insert — safe to call multiple times (e.g. test mode)
     _db.from('progress').upsert({
       user_email:   currentUser.email,
       dm_id:        dmId,
       completed_at: new Date().toISOString(),
     }, { onConflict: 'user_email,dm_id' })
-    .then(({ error }) => { if (error) console.warn('progress upsert:', error.message); });
+    .then(({ error }) => {
+      if (error) {
+        console.error('markDone error:', error);
+        showToast('⚠ Could not save progress: ' + error.message, 'error');
+      } else {
+        console.log('markDone: saved', dmId);
+      }
+    });
   }
 
   async function clearAllProgress() {
@@ -596,17 +613,24 @@
 
   function saveResumePosition(dmId, seconds) {
     const pos = Math.floor(seconds);
-    resumeData[dmId] = pos;   // update in-memory cache immediately
-    // Throttle writes: only persist every 5 s
+    resumeData[dmId] = pos;
     if (!saveThrottle) {
       saveThrottle = setTimeout(() => {
-        _db.from('resume').upsert({
+        const payload = {
           user_email:       currentUser.email,
           dm_id:            dmId,
           position_seconds: resumeData[dmId] ?? pos,
           updated_at:       new Date().toISOString(),
-        }, { onConflict: 'user_email,dm_id' })
-        .then(({ error }) => { if (error) console.warn('resume upsert:', error.message); });
+        };
+        _db.from('resume').upsert(payload, { onConflict: 'user_email,dm_id' })
+        .then(({ error }) => {
+          if (error) {
+            console.error('saveResumePosition error:', error);
+            showToast('⚠ Could not save position: ' + error.message, 'error');
+          } else {
+            console.log('saveResumePosition: saved', dmId, 'at', payload.position_seconds, 's');
+          }
+        });
         saveThrottle = null;
       }, 5000);
     }
