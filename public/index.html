@@ -212,10 +212,7 @@
     <p class="login-sub">Pre-course e-learning</p>
     <hr class="login-divider"/>
     <p style="font-size:15px;color:rgba(147,197,253,0.6);margin-bottom:16px;">Sign in with Google to access course</p>
-    <button id="google-signin-btn" onclick="signIn()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:11px 16px;background:#fff;border:none;border-radius:6px;font-family:'Montserrat',sans-serif;font-size:15px;font-weight:600;color:#3c4043;cursor:pointer;transition:box-shadow 0.15s;" onmouseenter="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.2)'" onmouseleave="this.style.boxShadow='none'">
-      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-      Sign in with Google
-    </button>
+    <div id="g_id_signin" style="display:flex;justify-content:center;min-height:44px;"></div>
     <p id="signin-status" style="font-size:12px;color:rgba(147,197,253,0.5);margin-top:12px;min-height:16px;"></p>
     <p class="login-note">Your progress and course completion will be tracked. A certificate email will be sent upon finishing all lessons.</p>
   </div>
@@ -359,27 +356,19 @@
 
 <div id="toast"></div>
 
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
   /* ═══════════════════════════════════════════════
-     FIREBASE CONFIG
+     CONFIG — Firebase REST API (no SDK required)
   ═══════════════════════════════════════════════ */
-  const firebaseConfig = {
-    apiKey:            'AIzaSyB97y-iuqOa3-yeCJUEeT5iqGnrZYbpt3M',
-    authDomain:        'tots-pelvic-course-e-learning.firebaseapp.com',
-    projectId:         'tots-pelvic-course-e-learning',
-    storageBucket:     'tots-pelvic-course-e-learning.firebasestorage.app',
-    messagingSenderId: '769073509073',
-    appId:             '1:769073509073:web:042152fb774b62a72fcbf0',
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db   = firebase.firestore();
+  const API_KEY    = 'AIzaSyB97y-iuqOa3-yeCJUEeT5iqGnrZYbpt3M';
+  const PROJECT_ID = 'tots-pelvic-course-e-learning';
+  const FS_BASE    = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+  const AUTH_BASE  = 'https://identitytoolkit.googleapis.com/v1/accounts';
+  const OAUTH_CLIENT_ID = '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com';
 
   /* ═══════════════════════════════════════════════
-     VIDEO METADATA  (dmId: Dailymotion video ID)
+     VIDEO METADATA
   ═══════════════════════════════════════════════ */
   const VIDEO_META = [
     { title: "Lecture 1",           subtitle: "Pelvic ring injury : classification and radiographic assessment",           instructor: "Surapong Anuraklekha, MD",     dmId: "xa1xids" },
@@ -391,8 +380,8 @@
     { title: "Lecture 7",           subtitle: "Ilioinguinal approach",                                                     instructor: "Rahat Jarayabhand, MD",         dmId: "xa20q18" },
     { title: "Lecture 8",           subtitle: "Iliofemoral and ASIS osteotomy approaches",                                 instructor: "Direk Tantigate, MD",           dmId: "xa20q14" },
     { title: "Lecture 9",           subtitle: "Kocher-Langenbeck approach",                                                instructor: "Vajara Phiphobmongkol, MD",     dmId: "xa20q10" },
-    { title: "Lecture 10",         subtitle: "Clinical usage of Gibson interval and trochanteric flip osteotomy",         instructor: "Pongsakorn Bupparenoo, MD",     dmId: "xa20q1c" },
-    { title: "Lecture 11",         subtitle: "Extensile approach",                                                        instructor: "Kitchai Luksameearunothai, MD", dmId: "xa22uyg" },
+    { title: "Lecture 10",          subtitle: "Clinical usage of Gibson interval and trochanteric flip osteotomy",         instructor: "Pongsakorn Bupparenoo, MD",     dmId: "xa20q1c" },
+    { title: "Lecture 11",          subtitle: "Extensile approach",                                                        instructor: "Kitchai Luksameearunothai, MD", dmId: "xa22uyg" },
     { title: "Surgical Approach 1", subtitle: "Kocher-Langenbeck approach",                                                instructor: "Rahat Jarayabhand, MD",         dmId: "xa22uyi" },
     { title: "Surgical Approach 2", subtitle: "Gibson interval and trochanteric flip osteotomy approaches",                instructor: "Kitchai Luksameearunothai, MD", dmId: "xa22uyc" },
     { title: "Surgical Approach 3", subtitle: "Ilioinguinal approach",                                                     instructor: "Rahat Jarayabhand, MD",         dmId: "xa22uy2" },
@@ -406,7 +395,7 @@
   /* ═══════════════════════════════════════════════
      STATE
   ═══════════════════════════════════════════════ */
-  let currentUser      = null;
+  let currentUser      = null;   // { name, email, picture, idToken, refreshToken, expiresAt, accessToken }
   let completed        = new Set();
   let resumeData       = {};
   let currentVideoIdx  = null;
@@ -435,87 +424,255 @@
     const el = document.getElementById('signin-status');
     if (el) { el.textContent = msg; el.style.color = isError ? '#fca5a5' : 'rgba(147,197,253,0.5)'; }
   }
-  // Firestore document ID: safe composite key from email + dmId
   function docId(email, dmId) {
-    return email.replace(/[@.]/g, '_') + '__' + dmId;
+    const safeEmail = email.toLowerCase()
+      .replace(/\./g, '%2E').replace(/@/g, '%40')
+      .replace(/[^a-z0-9%]/g, '_');
+    return safeEmail + '__' + dmId;
+  }
+  function parseJwt(token) {
+    const b64 = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0))));
   }
 
   /* ═══════════════════════════════════════════════
-     AUTH — Firebase Google Sign-In
+     FIREBASE AUTH REST
   ═══════════════════════════════════════════════ */
-
-  window.addEventListener('load', async () => {
-    // Handle redirect result first (mobile sign-in flow)
-    try {
-      const result = await auth.getRedirectResult();
-      if (result && result.user && !_appInitializing) {
-        const token = result.credential?.accessToken || null;
-        if (token) sessionStorage.setItem('google_access_token', token);
-        await initApp(result.user);
-        return;
-      }
-    } catch(e) { console.warn('getRedirectResult:', e.message); }
-
-    // Then check for existing session
-    auth.onAuthStateChanged(async (user) => {
-      if (user && !currentUser && !_appInitializing) {
-        await initApp(user);
-      }
+  async function exchangeGoogleToken(googleIdToken) {
+    const r = await fetch(`${AUTH_BASE}:signInWithIdp?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        postBody:             `id_token=${googleIdToken}&providerId=google.com`,
+        requestUri:           window.location.href,
+        returnIdpCredential:  true,
+        returnSecureToken:    true,
+      }),
     });
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Auth failed'); }
+    return r.json();
+    // Returns: { idToken, refreshToken, expiresIn, email, displayName, photoUrl }
+  }
+
+  async function refreshIdToken() {
+    if (!currentUser?.refreshToken) return false;
+    try {
+      const r = await fetch(
+        `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `grant_type=refresh_token&refresh_token=${currentUser.refreshToken}`,
+        }
+      );
+      if (!r.ok) return false;
+      const data = await r.json();
+      currentUser.idToken    = data.id_token;
+      currentUser.refreshToken = data.refresh_token;
+      currentUser.expiresAt  = Date.now() + (data.expires_in * 1000);
+      persistSession();
+      return true;
+    } catch(e) { return false; }
+  }
+
+  async function ensureValidToken() {
+    if (!currentUser) return false;
+    // Refresh if token expires within 5 minutes
+    if (Date.now() > currentUser.expiresAt - 300000) {
+      return refreshIdToken();
+    }
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════
+     SESSION PERSISTENCE (sessionStorage)
+  ═══════════════════════════════════════════════ */
+  function persistSession() {
+    if (!currentUser) return;
+    sessionStorage.setItem('tots_session', JSON.stringify({
+      name: currentUser.name, email: currentUser.email, picture: currentUser.picture,
+      idToken: currentUser.idToken, refreshToken: currentUser.refreshToken,
+      expiresAt: currentUser.expiresAt,
+    }));
+  }
+
+  async function restoreSession() {
+    try {
+      const raw = sessionStorage.getItem('tots_session');
+      if (!raw) return false;
+      const s = JSON.parse(raw);
+      if (!s.idToken || !s.refreshToken) return false;
+      currentUser = { ...s, accessToken: sessionStorage.getItem('google_access_token') || null };
+      // Try to refresh if needed
+      if (Date.now() > s.expiresAt - 300000) {
+        const ok = await refreshIdToken();
+        if (!ok) { sessionStorage.removeItem('tots_session'); currentUser = null; return false; }
+      }
+      return true;
+    } catch(e) { return false; }
+  }
+
+  /* ═══════════════════════════════════════════════
+     FIRESTORE REST HELPERS
+  ═══════════════════════════════════════════════ */
+  function toFsVal(v) {
+    if (typeof v === 'string')  return { stringValue: v };
+    if (typeof v === 'number')  return { integerValue: String(Math.floor(v)) };
+    if (typeof v === 'boolean') return { booleanValue: v };
+    return { nullValue: null };
+  }
+  function fromFsDoc(doc) {
+    if (!doc?.fields) return null;
+    const out = {};
+    for (const [k, v] of Object.entries(doc.fields)) {
+      if ('stringValue'  in v) out[k] = v.stringValue;
+      else if ('integerValue' in v) out[k] = parseInt(v.integerValue, 10);
+      else if ('doubleValue'  in v) out[k] = v.doubleValue;
+      else if ('booleanValue' in v) out[k] = v.booleanValue;
+      else out[k] = null;
+    }
+    return out;
+  }
+
+  async function fsRequest(method, path, body) {
+    await ensureValidToken();
+    const r = await fetch(`${FS_BASE}${path}`, {
+      method,
+      headers: {
+        Authorization:  `Bearer ${currentUser.idToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (r.status === 404) return null;
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Firestore ${method} failed (${r.status})`);
+    }
+    return r.status === 204 ? null : r.json();
+  }
+
+  async function fsSet(collection, id, fields) {
+    const fsFields = {};
+    for (const [k, v] of Object.entries(fields)) fsFields[k] = toFsVal(v);
+    const mask = Object.keys(fields).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+    return fsRequest('PATCH', `/${collection}/${id}?${mask}`, { fields: fsFields });
+  }
+
+  async function fsDelete(collection, id) {
+    return fsRequest('DELETE', `/${collection}/${id}`);
+  }
+
+  async function fsQuery(collection, fieldPath, value) {
+    const res = await fsRequest('POST', ':runQuery', {
+      structuredQuery: {
+        from: [{ collectionId: collection }],
+        where: { fieldFilter: {
+          field: { fieldPath },
+          op:    'EQUAL',
+          value: { stringValue: value },
+        }},
+      },
+    });
+    if (!Array.isArray(res)) return [];
+    return res.filter(r => r.document).map(r => ({
+      id:   r.document.name.split('/').pop(),
+      data: fromFsDoc(r.document),
+    }));
+  }
+
+  /* ═══════════════════════════════════════════════
+     AUTH — Google Sign-In (GSI) → Firebase REST
+  ═══════════════════════════════════════════════ */
+  window.addEventListener('load', async () => {
+    // Try restoring existing session
+    const restored = await restoreSession();
+    if (restored && !_appInitializing) {
+      await initApp();
+      return;
+    }
+    // No session — init GSI login button
+    if (typeof google === 'undefined' || !google.accounts) {
+      setStatus('⚠ Google Sign-In library failed to load.', true);
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id:           '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com',
+      callback:            handleCredentialResponse,
+      auto_select:         false,
+      cancel_on_tap_outside: false,
+    });
+    google.accounts.id.renderButton(
+      document.getElementById('g_id_signin'),
+      { theme: 'filled_blue', size: 'large', width: 300, shape: 'rectangular' }
+    );
   });
 
-  async function signIn() {
-    setStatus('Signing in with Google…', false);
-    const btn = document.getElementById('google-signin-btn');
-    btn.disabled = true;
-
-    const provider = new firebase.auth.GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/gmail.send');
-
+  async function handleCredentialResponse(response) {
+    setStatus('Signing in…', false);
+    document.getElementById('google-signin-btn').disabled = true;
     try {
-      // Try popup (desktop)
-      const result = await auth.signInWithPopup(provider);
-      const token = result.credential?.accessToken || null;
-      if (token) sessionStorage.setItem('google_access_token', token);
-      await initApp(result.user);
+      const firebaseAuth = await exchangeGoogleToken(response.credential);
+      const payload      = parseJwt(response.credential);
+      currentUser = {
+        name:         firebaseAuth.displayName || payload.name || payload.email,
+        email:        firebaseAuth.email       || payload.email,
+        picture:      firebaseAuth.photoUrl    || payload.picture || '',
+        idToken:      firebaseAuth.idToken,
+        refreshToken: firebaseAuth.refreshToken,
+        expiresAt:    Date.now() + (parseInt(firebaseAuth.expiresIn, 10) * 1000),
+        accessToken:  null,  // Gmail token — requested separately
+      };
+      persistSession();
+      if (!_appInitializing) await initApp();
     } catch(e) {
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
-        // Fallback to redirect (mobile)
-        const provider2 = new firebase.auth.GoogleAuthProvider();
-        provider2.addScope('https://www.googleapis.com/auth/gmail.send');
-        await auth.signInWithRedirect(provider2);
-      } else {
-        setStatus('⚠ Sign-in error: ' + e.message, true);
-        btn.disabled = false;
-      }
+      setStatus('⚠ Sign-in error: ' + e.message, true);
+      document.getElementById('google-signin-btn').disabled = false;
     }
+  }
+
+  function signIn() {
+    // Programmatic sign-in: request Gmail scope via token client
+    if (typeof google === 'undefined') return;
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com',
+      scope:     'https://www.googleapis.com/auth/gmail.send',
+      callback:  (res) => {
+        if (res.access_token) {
+          sessionStorage.setItem('google_access_token', res.access_token);
+          if (currentUser) currentUser.accessToken = res.access_token;
+        }
+      },
+    });
+    // Trigger One Tap / popup sign-in
+    google.accounts.id.prompt();
   }
 
   async function signOut() {
     stopSeekPoll();
     if (isFakeFs) exitFakeFullscreen();
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} }
+    sessionStorage.removeItem('tots_session');
     sessionStorage.removeItem('google_access_token');
-    await auth.signOut();
+    if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
+    currentUser = null;
     location.reload();
   }
 
-  async function initApp(user) {
+  async function initApp() {
     if (_appInitializing) return;
     _appInitializing = true;
 
-    currentUser = {
-      name:        user.displayName || user.email,
-      email:       user.email,
-      picture:     user.photoURL || '',
-      accessToken: sessionStorage.getItem('google_access_token') || null,
-    };
+    // Restore Google access token if available
+    if (!currentUser.accessToken) {
+      currentUser.accessToken = sessionStorage.getItem('google_access_token') || null;
+    }
     emailSentKey = `tots_emailsent_${currentUser.email}`;
 
     document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    document.getElementById('user-name').textContent = currentUser.name.split(' ')[0];
-    document.getElementById('user-avatar').src = currentUser.picture;
+    document.getElementById('app').style.display          = 'block';
+    document.getElementById('user-name').textContent      = currentUser.name.split(' ')[0];
+    document.getElementById('user-avatar').src            = currentUser.picture;
 
     await Promise.all([loadProgress(), loadResumePositions()]);
 
@@ -537,80 +694,71 @@
   }
 
   /* ═══════════════════════════════════════════════
-     GMAIL — uses Google access token from sign-in
+     GMAIL — Google access token for certificate
   ═══════════════════════════════════════════════ */
   async function ensureGmailToken() {
     if (currentUser.accessToken) return true;
-    // Token not available (old session) — re-auth silently via popup
-    try {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      provider.addScope('https://www.googleapis.com/auth/gmail.send');
-      const result = await auth.signInWithPopup(provider);
-      const token = result.credential?.accessToken || null;
-      if (token) {
-        currentUser.accessToken = token;
-        sessionStorage.setItem('google_access_token', token);
-        return true;
-      }
-    } catch(e) { console.warn('token refresh:', e.message); }
-    return false;
+    return new Promise((resolve) => {
+      if (typeof google === 'undefined') { resolve(false); return; }
+      const tc = google.accounts.oauth2.initTokenClient({
+        client_id: '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com',
+        scope:     'https://www.googleapis.com/auth/gmail.send',
+        callback:  (res) => {
+          if (res.access_token) {
+            currentUser.accessToken = res.access_token;
+            sessionStorage.setItem('google_access_token', res.access_token);
+            resolve(true);
+          } else { resolve(false); }
+        },
+        error_callback: () => resolve(false),
+      });
+      tc.requestAccessToken({ prompt: 'none' });
+    });
   }
 
   /* ═══════════════════════════════════════════════
-     PROGRESS — Firestore
+     PROGRESS — Firestore REST
   ═══════════════════════════════════════════════ */
   async function loadProgress() {
     try {
-      const snap = await db.collection('progress')
-        .where('user_email', '==', currentUser.email).get();
-      completed = new Set(snap.docs.map(d => d.data().dm_id));
-      console.log('loadProgress: loaded', snap.docs.length, 'rows');
+      const rows = await fsQuery('progress', 'user_email', currentUser.email);
+      completed = new Set(rows.map(r => r.data.dm_id));
+      console.log('loadProgress:', completed.size, 'completed');
     } catch(e) {
-      console.error('loadProgress error:', e);
+      console.error('loadProgress:', e);
       showToast('⚠ Could not load progress: ' + e.message, 'error');
     }
   }
 
   function markDone(dmId) {
     completed.add(dmId);
-    db.collection('progress').doc(docId(currentUser.email, dmId)).set({
+    fsSet('progress', docId(currentUser.email, dmId), {
       user_email:   currentUser.email,
       dm_id:        dmId,
-      completed_at: firebase.firestore.FieldValue.serverTimestamp(),
-    }).then(() => {
-      console.log('markDone: saved', dmId);
-    }).catch(e => {
-      console.error('markDone error:', e);
-      showToast('⚠ Could not save progress: ' + e.message, 'error');
-    });
+      completed_at: new Date().toISOString(),
+    }).then(() => console.log('markDone:', dmId))
+      .catch(e => { console.error('markDone:', e); showToast('⚠ Could not save progress: ' + e.message, 'error'); });
   }
 
   async function clearAllProgress() {
     try {
-      const snap = await db.collection('progress')
-        .where('user_email', '==', currentUser.email).get();
-      const batch = db.batch();
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
+      const rows = await fsQuery('progress', 'user_email', currentUser.email);
+      await Promise.all(rows.map(r => fsDelete('progress', r.id)));
     } catch(e) { console.error('clearAllProgress:', e); }
     completed = new Set();
   }
 
   /* ═══════════════════════════════════════════════
-     RESUME — Firestore
+     RESUME — Firestore REST
   ═══════════════════════════════════════════════ */
   async function loadResumePositions() {
     try {
-      const snap = await db.collection('resume')
-        .where('user_email', '==', currentUser.email).get();
+      const rows = await fsQuery('resume', 'user_email', currentUser.email);
       resumeData = {};
-      snap.docs.forEach(d => {
-        const data = d.data();
-        resumeData[data.dm_id] = data.position_seconds;
-      });
-      console.log('loadResume: loaded', snap.docs.length, 'rows');
+      rows.forEach(r => { resumeData[r.data.dm_id] = r.data.position_seconds; });
+      console.log('loadResume:', Object.keys(resumeData).length, 'positions');
     } catch(e) {
-      console.error('loadResumePositions error:', e);
+      console.error('loadResumePositions:', e);
       showToast('⚠ Could not load resume positions: ' + e.message, 'error');
     }
   }
@@ -621,16 +769,13 @@
     if (!saveThrottle) {
       saveThrottle = setTimeout(() => {
         const savedPos = resumeData[dmId] ?? pos;
-        db.collection('resume').doc(docId(currentUser.email, dmId)).set({
+        fsSet('resume', docId(currentUser.email, dmId), {
           user_email:       currentUser.email,
           dm_id:            dmId,
           position_seconds: savedPos,
-          updated_at:       firebase.firestore.FieldValue.serverTimestamp(),
-        }).then(() => {
-          console.log('saveResume:', dmId, 'at', savedPos, 's');
-        }).catch(e => {
-          console.error('saveResumePosition error:', e);
-        });
+          updated_at:       new Date().toISOString(),
+        }).then(() => console.log('saveResume:', dmId, 'at', savedPos, 's'))
+          .catch(e => console.error('saveResumePosition:', e));
         saveThrottle = null;
       }, 5000);
     }
@@ -638,17 +783,14 @@
 
   function clearResumePosition(dmId) {
     delete resumeData[dmId];
-    db.collection('resume').doc(docId(currentUser.email, dmId)).delete()
+    fsDelete('resume', docId(currentUser.email, dmId))
       .catch(e => console.error('clearResumePosition:', e));
   }
 
   async function clearAllResume() {
     try {
-      const snap = await db.collection('resume')
-        .where('user_email', '==', currentUser.email).get();
-      const batch = db.batch();
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
+      const rows = await fsQuery('resume', 'user_email', currentUser.email);
+      await Promise.all(rows.map(r => fsDelete('resume', r.id)));
     } catch(e) { console.error('clearAllResume:', e); }
     resumeData = {};
   }
@@ -673,51 +815,38 @@
         window._dmPendingAttach();
         window._dmPendingAttach = null;
       }
-      if (pendingIdx !== null) {
-        const idx = pendingIdx; pendingIdx = null;
-        playVideo(idx);
-      }
+      if (pendingIdx !== null) { const idx = pendingIdx; pendingIdx = null; playVideo(idx); }
     };
     const s = document.createElement('script');
-    s.id  = 'dm-sdk';
-    s.src = 'https://api.dmcdn.net/all.js';
+    s.id = 'dm-sdk'; s.src = 'https://api.dmcdn.net/all.js';
     s.onerror = () => showToast('Dailymotion SDK failed to load.', 'error');
     document.head.appendChild(s);
   }
 
   function createDMPlayer(dmId, startAt) {
-    if (dmPlayer) {
-      try { dmPlayer.pause(); } catch(e) {}
-      dmPlayer = null;
-      dmReady  = false;
+    stopSeekPoll();
+    if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} dmPlayer = null; dmReady = false; }
+    if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
+    const outgoing = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
+    if (outgoing?.dmId && lastKnownTime > 0) {
+      fsSet('resume', docId(currentUser.email, outgoing.dmId), {
+        user_email: currentUser.email, dm_id: outgoing.dmId,
+        position_seconds: Math.floor(lastKnownTime), updated_at: new Date().toISOString(),
+      }).catch(e => console.error('flush resume:', e));
     }
-    // Flush pending resume save for outgoing video
-    if (saveThrottle) {
-      clearTimeout(saveThrottle); saveThrottle = null;
-      const outgoing = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
-      if (outgoing?.dmId && lastKnownTime > 0) {
-        db.collection('resume').doc(docId(currentUser.email, outgoing.dmId)).set({
-          user_email: currentUser.email, dm_id: outgoing.dmId,
-          position_seconds: Math.floor(lastKnownTime),
-          updated_at: firebase.firestore.FieldValue.serverTimestamp(),
-        }).catch(e => console.error('flush resume:', e));
-      }
-    }
-    isSeeking     = false;
-    lastKnownTime = startAt;
+    isSeeking = false; lastKnownTime = startAt;
 
     const wrap = document.getElementById('player-wrap');
     const params = new URLSearchParams({
-      autoplay: 1, controls: 1,
-      'queue-enable': 0, 'sharing-enable': 0, 'ui-logo': 0,
+      autoplay: 1, controls: 1, 'queue-enable': 0, 'sharing-enable': 0, 'ui-logo': 0,
       start: Math.floor(startAt),
     });
     const iframe = document.createElement('iframe');
-    iframe.id              = 'dm-iframe';
+    iframe.id = 'dm-iframe';
     iframe.style.cssText   = 'width:100%;height:100%;display:block;border:none;position:absolute;inset:0;z-index:1;';
     iframe.allow           = 'autoplay; fullscreen';
     iframe.allowFullscreen = true;
-    iframe.src             = `https://www.dailymotion.com/embed/video/${dmId}?${params}`;
+    iframe.src = `https://www.dailymotion.com/embed/video/${dmId}?${params}`;
     const oldIframe = wrap.querySelector('iframe');
     if (oldIframe) oldIframe.remove();
     wrap.insertBefore(iframe, document.getElementById('seek-block'));
@@ -726,7 +855,6 @@
       if (typeof DM === 'undefined' || !DM.Player) return;
       try {
         dmPlayer = new DM.Player(iframe);
-
         dmPlayer.addEventListener('apiready', () => {
           dmReady = true;
           if (startAt > 2) {
@@ -737,118 +865,90 @@
           }
           startSeekPoll();
         });
-
         dmPlayer.addEventListener('timeupdate', (e) => {
           if (isSeeking) return;
           const t = e?.videoCurrentTime ?? dmPlayer.currentTime;
-          if (typeof t === 'number' && !isNaN(t)) {
-            lastKnownTime = t;
-            if (t > maxReachedTime) maxReachedTime = t;
-          }
+          if (typeof t === 'number' && !isNaN(t)) { lastKnownTime = t; if (t > maxReachedTime) maxReachedTime = t; }
         });
-
         dmPlayer.addEventListener('seeking', (e) => {
           if (isSeeking || maxReachedTime === Infinity) return;
           const seekTarget = e?.videoCurrentTime ?? lastKnownTime;
           if (typeof seekTarget === 'number' && seekTarget > maxReachedTime + 1.5) {
             const meta = VIDEO_META[currentVideoIdx];
             if (meta?.dmId) saveResumePosition(meta.dmId, maxReachedTime);
-            isSeeking = true;
-            dmPlayer.seek(maxReachedTime);
+            isSeeking = true; dmPlayer.seek(maxReachedTime);
             showToast('You cannot skip ahead — watch to unlock.', 'error');
             setTimeout(() => { isSeeking = false; }, 600);
           }
         });
-
         dmPlayer.addEventListener('end', () => {
           stopSeekPoll();
           const meta = VIDEO_META[currentVideoIdx];
           if (meta?.dmId) clearResumePosition(meta.dmId);
           if (!completed.has(meta?.dmId)) setBtnState('ready');
         });
-
         dmPlayer.addEventListener('pause', () => {
           if (isSeeking) return;
           const meta = VIDEO_META[currentVideoIdx];
           if (meta?.dmId) saveResumePosition(meta.dmId, lastKnownTime);
         });
-
         dmPlayer.addEventListener('play', () => {
           const meta = VIDEO_META[currentVideoIdx];
           if (meta?.dmId && lastKnownTime > 0) saveResumePosition(meta.dmId, lastKnownTime);
         });
-
         dmPlayer.addEventListener('error', (e) => {
           showToast('Video error — please try again.', 'error');
           console.warn('DM player error:', e);
         });
-
       } catch(e) { console.warn('DM.Player attach failed:', e); }
     }
-
-    if (typeof DM !== 'undefined') {
-      attachDMEvents();
-    } else {
-      window._dmPendingAttach = attachDMEvents;
-    }
+    if (typeof DM !== 'undefined') { attachDMEvents(); }
+    else { window._dmPendingAttach = attachDMEvents; }
   }
 
-  /* ── Seek prevention backup poll ── */
   function startSeekPoll() {
     stopSeekPoll();
     seekPollInterval = setInterval(() => {
       if (!dmPlayer || !dmReady || isSeeking) return;
       if (maxReachedTime !== Infinity && lastKnownTime > maxReachedTime + 2) {
-        isSeeking = true;
-        dmPlayer.seek(maxReachedTime);
+        isSeeking = true; dmPlayer.seek(maxReachedTime);
         showToast('You cannot skip ahead — watch to unlock.', 'error');
         setTimeout(() => { isSeeking = false; }, 600);
       }
     }, 500);
   }
+
   function stopSeekPoll() {
     clearInterval(seekPollInterval); seekPollInterval = null;
-    if (saveThrottle) {
-      clearTimeout(saveThrottle); saveThrottle = null;
-      const meta = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
-      if (meta?.dmId) saveResumePosition(meta.dmId, lastKnownTime);
+    if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
+    const meta = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
+    if (meta?.dmId && lastKnownTime > 0 && currentUser) {
+      fsSet('resume', docId(currentUser.email, meta.dmId), {
+        user_email: currentUser.email, dm_id: meta.dmId,
+        position_seconds: Math.floor(lastKnownTime), updated_at: new Date().toISOString(),
+      }).catch(e => console.error('stopSeekPoll flush:', e));
     }
   }
 
-  /* ── Button state machine ── */
   const BTN_LABEL = { watching: '⏳ Watch to complete', ready: '✓ Mark Complete', completed: '✓ Completed' };
   function setBtnState(state) {
     const btn = document.getElementById('mark-complete-btn');
-    btn.dataset.state = state;
-    btn.disabled      = state !== 'ready';
-    btn.textContent   = BTN_LABEL[state];
+    btn.dataset.state = state; btn.disabled = state !== 'ready'; btn.textContent = BTN_LABEL[state];
   }
 
-  /* ── Fullscreen ── */
   function toggleFullscreen() {
     const wrap = document.getElementById('player-wrap');
     const isNativeFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
     if (isFakeFs) { exitFakeFullscreen(); return; }
     if (isNativeFs) { (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document); return; }
     const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen || wrap.mozRequestFullScreen;
-    if (req) { req.call(wrap).catch(() => enterFakeFullscreen()); }
-    else { enterFakeFullscreen(); }
+    if (req) { req.call(wrap).catch(() => enterFakeFullscreen()); } else { enterFakeFullscreen(); }
   }
-  function enterFakeFullscreen() {
-    document.getElementById('player-wrap').classList.add('fake-fs');
-    document.body.style.overflow = 'hidden';
-    isFakeFs = true; updateFsIcon(true);
-  }
-  function exitFakeFullscreen() {
-    document.getElementById('player-wrap').classList.remove('fake-fs');
-    document.body.style.overflow = '';
-    isFakeFs = false; updateFsIcon(false);
-  }
+  function enterFakeFullscreen() { document.getElementById('player-wrap').classList.add('fake-fs'); document.body.style.overflow = 'hidden'; isFakeFs = true; updateFsIcon(true); }
+  function exitFakeFullscreen() { document.getElementById('player-wrap').classList.remove('fake-fs'); document.body.style.overflow = ''; isFakeFs = false; updateFsIcon(false); }
   function updateFsIcon(isFs) {
-    const exp = document.getElementById('fs-icon-expand');
-    const shr = document.getElementById('fs-icon-shrink');
-    if (exp) exp.style.display = isFs ? 'none' : '';
-    if (shr) shr.style.display = isFs ? ''     : 'none';
+    const exp = document.getElementById('fs-icon-expand'); const shr = document.getElementById('fs-icon-shrink');
+    if (exp) exp.style.display = isFs ? 'none' : ''; if (shr) shr.style.display = isFs ? '' : 'none';
   }
   function onFullscreenChange() { updateFsIcon(!!(document.fullscreenElement || document.webkitFullscreenElement)); }
   document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -858,9 +958,7 @@
      PLAY VIDEO
   ═══════════════════════════════════════════════ */
   function playVideo(index) {
-    const meta = VIDEO_META[index];
-    if (!meta) return;
-
+    const meta = VIDEO_META[index]; if (!meta) return;
     if (index > 0) {
       for (let p = index - 1; p >= 0; p--) {
         if (VIDEO_META[p]?.dmId) {
@@ -869,47 +967,37 @@
         }
       }
     }
-
     if (!meta.dmId) {
       stopSeekPoll();
-      if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} }
+      if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} dmPlayer = null; dmReady = false; }
       showAllPlayerStates('coming-soon');
-      document.getElementById('lesson-info').style.display    = 'block';
-      document.getElementById('now-playing-bar').style.display = 'flex';
-      document.getElementById('fullscreen-btn').style.display  = 'none';
-      document.getElementById('now-playing-title').textContent = `${meta.title} — coming soon`;
+      document.getElementById('lesson-info').style.display     = 'block';
+      document.getElementById('now-playing-bar').style.display  = 'flex';
+      document.getElementById('fullscreen-btn').style.display   = 'none';
+      document.querySelector('.np-pulse').style.display         = 'none';
+      document.querySelector('.np-label').textContent           = 'Coming Soon';
+      document.getElementById('now-playing-title').textContent  = `${meta.title} — ${meta.subtitle}`;
       document.getElementById('hero-title').textContent    = meta.title;
       document.getElementById('hero-subtitle').textContent = meta.instructor;
-      setBtnState('watching');
-      currentVideoIdx = index;
-      refreshCards();
+      setBtnState('watching'); currentVideoIdx = index; refreshCards();
       document.querySelector('.hero-banner').scrollIntoView({ behavior: 'smooth' });
       return;
     }
-
-    if (typeof DM === 'undefined') {
-      pendingIdx = index;
-      showToast('Player is loading — your video will start shortly…', '');
-      return;
-    }
-
+    if (typeof DM === 'undefined') { pendingIdx = index; showToast('Player is loading — your video will start shortly…', ''); return; }
     currentVideoIdx = index;
     const resumeAt  = resumeData[meta.dmId] || 0;
     maxReachedTime  = completed.has(meta.dmId) ? Infinity : resumeAt;
-
     showAllPlayerStates('player');
     createDMPlayer(meta.dmId, resumeAt);
-
     document.getElementById('now-playing-bar').style.display   = 'flex';
     document.getElementById('fullscreen-btn').style.display    = 'flex';
+    document.querySelector('.np-pulse').style.display          = '';
+    document.querySelector('.np-label').textContent            = 'Now Playing';
     document.getElementById('now-playing-title').textContent   = `${meta.title} — ${meta.subtitle}`;
     document.getElementById('lesson-info').style.display       = 'block';
     document.getElementById('hero-title').textContent    = `${meta.title}: ${meta.subtitle}`;
     document.getElementById('hero-subtitle').textContent = meta.instructor;
-
-    if (completed.has(meta.dmId)) setBtnState('completed');
-    else setBtnState('watching');
-
+    if (completed.has(meta.dmId)) setBtnState('completed'); else setBtnState('watching');
     refreshCards();
     document.querySelector('.hero-banner').scrollIntoView({ behavior: 'smooth' });
   }
@@ -920,59 +1008,36 @@
     document.getElementById('player-wrap').style.display      = which === 'player'       ? 'block' : 'none';
   }
 
-  /* ═══════════════════════════════════════════════
-     MARK COMPLETE
-  ═══════════════════════════════════════════════ */
   function markCurrentComplete() {
     const meta = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
     if (!meta?.dmId) return;
     const btn = document.getElementById('mark-complete-btn');
     if (btn.dataset.state !== 'ready') return;
-    markDone(meta.dmId);
-    updateProgressBar();
-    refreshCards();
-    setBtnState('completed');
+    markDone(meta.dmId); updateProgressBar(); refreshCards(); setBtnState('completed');
     showToast('Lesson marked as complete ✓', 'success');
     if (countDone() >= AVAILABLE_COUNT) setTimeout(showCompletionPage, 800);
   }
 
-  /* ═══════════════════════════════════════════════
-     CARDS
-  ═══════════════════════════════════════════════ */
-  const videoIconSVG = () =>
-    `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"><rect x="2" y="3" width="15" height="15" rx="2"/><polygon points="17,8 22,5 22,16 17,13"/></svg>`;
-  const clockIconSVG = () =>
-    `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#6b7fa8" stroke-width="1.5" opacity="0.5"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>`;
+  const videoIconSVG = () => `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.5" opacity="0.35"><rect x="2" y="3" width="15" height="15" rx="2"/><polygon points="17,8 22,5 22,16 17,13"/></svg>`;
+  const clockIconSVG = () => `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#6b7fa8" stroke-width="1.5" opacity="0.5"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>`;
 
   function refreshCards() {
     document.querySelectorAll('.video-card').forEach((card) => {
-      const i        = parseInt(card.dataset.index, 10);
-      const meta     = VIDEO_META[i];
-      const dmId     = meta?.dmId || null;
-      const isDone   = dmId && completed.has(dmId);
-      const isActive = i === currentVideoIdx;
-      const isUnavail = !dmId;
+      const i = parseInt(card.dataset.index, 10);
+      const meta = VIDEO_META[i]; const dmId = meta?.dmId || null;
+      const isDone = dmId && completed.has(dmId); const isActive = i === currentVideoIdx; const isUnavail = !dmId;
       let isLocked = false;
-      if (!isUnavail && i > 0) {
-        for (let p = i - 1; p >= 0; p--) {
-          if (VIDEO_META[p]?.dmId) { isLocked = !completed.has(VIDEO_META[p].dmId); break; }
-        }
-      }
+      if (!isUnavail && i > 0) { for (let p = i-1; p >= 0; p--) { if (VIDEO_META[p]?.dmId) { isLocked = !completed.has(VIDEO_META[p].dmId); break; } } }
       let cls = 'video-card';
-      if (isUnavail) cls += ' unavailable';
-      else if (isLocked) cls += ' locked';
-      else cls += ' unlocked';
-      if (isDone)   cls += ' completed';
-      if (isActive) cls += ' active';
+      if (isUnavail) cls += ' unavailable'; else if (isLocked) cls += ' locked'; else cls += ' unlocked';
+      if (isDone) cls += ' completed'; if (isActive) cls += ' active';
       card.className = cls;
-
       const badge = card.querySelector('.status-badge');
       if (isActive && dmId)  { badge.className = 'status-badge playing'; badge.textContent = '▶ Playing'; }
       else if (isDone)       { badge.className = 'status-badge done';    badge.textContent = '✓ Done'; }
       else if (isUnavail)    { badge.className = 'status-badge soon';    badge.textContent = '⏱ Soon'; }
       else if (isLocked)     { badge.className = 'status-badge locked';  badge.textContent = '🔒 Locked'; }
       else                   { badge.className = 'status-badge lesson';  badge.textContent = meta?.title || `Video ${i+1}`; }
-
       let lockEl = card.querySelector('.lock-overlay');
       if (isLocked && !isUnavail) {
         if (!lockEl) {
@@ -985,13 +1050,11 @@
   }
 
   function renderCards() {
-    const grid = document.getElementById('grid');
-    grid.innerHTML = '';
+    const grid = document.getElementById('grid'); grid.innerHTML = '';
     VIDEO_META.forEach((meta, i) => {
       const card = document.createElement('div');
       card.className = 'video-card ' + (meta.dmId ? 'unlocked' : 'unavailable');
-      card.dataset.index = i;
-      card.style.animationDelay = `${i * 35}ms`;
+      card.dataset.index = i; card.style.animationDelay = `${i * 35}ms`;
       card.innerHTML = `
         <div class="thumb-wrap">
           <div class="thumb-fallback">${meta.dmId ? videoIconSVG() : clockIconSVG()}</div>
@@ -1011,17 +1074,12 @@
       grid.appendChild(card);
     });
     const cnt = document.getElementById('video-count');
-    cnt.textContent  = `${AVAILABLE_COUNT} of ${VIDEO_META.length} lesson${VIDEO_META.length !== 1 ? 's' : ''} available`;
-    cnt.style.display = 'inline-block';
-    grid.style.display = 'grid';
-    refreshCards();
-    updateProgressBar();
+    cnt.textContent = `${AVAILABLE_COUNT} of ${VIDEO_META.length} lesson${VIDEO_META.length !== 1 ? 's' : ''} available`;
+    cnt.style.display = 'inline-block'; grid.style.display = 'grid';
+    refreshCards(); updateProgressBar();
     if (countDone() >= AVAILABLE_COUNT && AVAILABLE_COUNT > 0) setTimeout(showCompletionPage, 300);
   }
 
-  /* ═══════════════════════════════════════════════
-     COMPLETION PAGE
-  ═══════════════════════════════════════════════ */
   function showCompletionPage() {
     const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     document.getElementById('cp-name').textContent    = currentUser.name;
@@ -1031,18 +1089,14 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
     sendCourseEmails();
   }
-  function hideCompletionPage() {
-    document.getElementById('completion-page').style.display = 'none';
-  }
+  function hideCompletionPage() { document.getElementById('completion-page').style.display = 'none'; }
 
   async function resetCourse() {
     if (!confirm('Reset course progress? This will clear all completed lessons and resume positions. Your certificate has already been sent.')) return;
     stopSeekPoll();
     if (isFakeFs) exitFakeFullscreen();
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} dmPlayer = null; dmReady = false; }
-    currentVideoIdx = null;
-    maxReachedTime  = 0;
-    lastKnownTime   = 0;
+    currentVideoIdx = null; maxReachedTime = 0; lastKnownTime = 0;
     await Promise.all([clearAllProgress(), clearAllResume()]);
     localStorage.removeItem(emailSentKey);
     hideCompletionPage();
@@ -1053,14 +1107,12 @@
     document.getElementById('hero-title').textContent          = '';
     document.getElementById('hero-subtitle').textContent       = '';
     document.getElementById('test-mode-btn').style.display     = '';
-    updateProgressBar();
-    refreshCards();
+    document.querySelector('.np-pulse').style.display          = '';
+    document.querySelector('.np-label').textContent            = 'Now Playing';
+    updateProgressBar(); refreshCards();
     showToast('Course reset — good luck! 🎯', 'success');
   }
 
-  /* ═══════════════════════════════════════════════
-     CERTIFICATE EMAIL
-  ═══════════════════════════════════════════════ */
   async function sendCourseEmails() {
     if (localStorage.getItem(emailSentKey)) {
       const s = document.getElementById('cp-email-status');
@@ -1069,15 +1121,14 @@
       return;
     }
     const status = document.getElementById('cp-email-status');
+    status.className = 'cp-email-status';
     status.textContent = '📧 Sending your certificate…';
-
     const hasToken = await ensureGmailToken();
     if (!hasToken) {
       status.className = 'cp-email-status error';
       status.textContent = '⚠ Gmail permission not available. Please sign out and sign back in.';
       return;
     }
-
     const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     try {
       await sendEmailRaw(buildCertEmail(date, AVAILABLE_COUNT));
@@ -1133,9 +1184,6 @@
     ].join('\r\n');
   }
 
-  /* ═══════════════════════════════════════════════
-     TEST MODE
-  ═══════════════════════════════════════════════ */
   function activateTestMode() {
     localStorage.removeItem(emailSentKey);
     VIDEO_META.forEach(m => { if (m.dmId) markDone(m.dmId); });
@@ -1146,9 +1194,6 @@
     setTimeout(showCompletionPage, 800);
   }
 
-  /* ═══════════════════════════════════════════════
-     TOAST
-  ═══════════════════════════════════════════════ */
   let toastTimer;
   function showToast(msg, type = '') {
     const t = document.getElementById('toast');
@@ -1157,7 +1202,6 @@
     toastTimer = setTimeout(() => t.className = '', 3500);
   }
 
-  // Footer date
   (function() {
     const d = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     document.getElementById('footer-date').textContent = 'Accessed on ' + d;
