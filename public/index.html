@@ -356,15 +356,15 @@
 
 <div id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 <script>
   /* ═══════════════════════════════════════════════
      CONFIG — Firebase REST API (no SDK required)
   ═══════════════════════════════════════════════ */
-  const API_KEY    = 'AIzaSyB97y-iuqOa3-yeCJUEeT5iqGnrZYbpt3M';
-  const PROJECT_ID = 'tots-pelvic-course-e-learning';
-  const FS_BASE    = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
-  const AUTH_BASE  = 'https://identitytoolkit.googleapis.com/v1/accounts';
+  const API_KEY         = 'AIzaSyB97y-iuqOa3-yeCJUEeT5iqGnrZYbpt3M';
+  const PROJECT_ID      = 'tots-pelvic-course-e-learning';
+  const FS_BASE         = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+  const AUTH_BASE       = 'https://identitytoolkit.googleapis.com/v1/accounts';
   const OAUTH_CLIENT_ID = '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com';
 
   /* ═══════════════════════════════════════════════
@@ -467,9 +467,9 @@
       );
       if (!r.ok) return false;
       const data = await r.json();
-      currentUser.idToken    = data.id_token;
+      currentUser.idToken      = data.id_token;
       currentUser.refreshToken = data.refresh_token;
-      currentUser.expiresAt  = Date.now() + (data.expires_in * 1000);
+      currentUser.expiresAt    = Date.now() + (parseInt(data.expires_in, 10) * 1000);
       persistSession();
       return true;
     } catch(e) { return false; }
@@ -536,12 +536,11 @@
 
   async function fsRequest(method, path, body) {
     await ensureValidToken();
+    const headers = { Authorization: `Bearer ${currentUser.idToken}` };
+    if (body) headers['Content-Type'] = 'application/json';
     const r = await fetch(`${FS_BASE}${path}`, {
       method,
-      headers: {
-        Authorization:  `Bearer ${currentUser.idToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     if (r.status === 404) return null;
@@ -597,7 +596,7 @@
       return;
     }
     google.accounts.id.initialize({
-      client_id:           '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com',
+      client_id:           OAUTH_CLIENT_ID,
       callback:            handleCredentialResponse,
       auto_select:         false,
       cancel_on_tap_outside: false,
@@ -610,7 +609,6 @@
 
   async function handleCredentialResponse(response) {
     setStatus('Signing in…', false);
-    document.getElementById('google-signin-btn').disabled = true;
     try {
       const firebaseAuth = await exchangeGoogleToken(response.credential);
       const payload      = parseJwt(response.credential);
@@ -621,31 +619,13 @@
         idToken:      firebaseAuth.idToken,
         refreshToken: firebaseAuth.refreshToken,
         expiresAt:    Date.now() + (parseInt(firebaseAuth.expiresIn, 10) * 1000),
-        accessToken:  null,  // Gmail token — requested separately
+        accessToken:  null,
       };
       persistSession();
       if (!_appInitializing) await initApp();
     } catch(e) {
       setStatus('⚠ Sign-in error: ' + e.message, true);
-      document.getElementById('google-signin-btn').disabled = false;
     }
-  }
-
-  function signIn() {
-    // Programmatic sign-in: request Gmail scope via token client
-    if (typeof google === 'undefined') return;
-    const tc = google.accounts.oauth2.initTokenClient({
-      client_id: '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com',
-      scope:     'https://www.googleapis.com/auth/gmail.send',
-      callback:  (res) => {
-        if (res.access_token) {
-          sessionStorage.setItem('google_access_token', res.access_token);
-          if (currentUser) currentUser.accessToken = res.access_token;
-        }
-      },
-    });
-    // Trigger One Tap / popup sign-in
-    google.accounts.id.prompt();
   }
 
   async function signOut() {
@@ -701,7 +681,7 @@
     return new Promise((resolve) => {
       if (typeof google === 'undefined') { resolve(false); return; }
       const tc = google.accounts.oauth2.initTokenClient({
-        client_id: '769073509073-hu8di5rda71rmtf4h1tsaav9iuv04nh5.apps.googleusercontent.com',
+        client_id: OAUTH_CLIENT_ID,
         scope:     'https://www.googleapis.com/auth/gmail.send',
         callback:  (res) => {
           if (res.access_token) {
@@ -823,11 +803,13 @@
     document.head.appendChild(s);
   }
 
-  function createDMPlayer(dmId, startAt) {
+  function createDMPlayer(dmId, startAt, prevVideoIdx) {
     stopSeekPoll();
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} dmPlayer = null; dmReady = false; }
     if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
-    const outgoing = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
+
+    // Flush outgoing video position using prevVideoIdx — currentVideoIdx already points to new video
+    const outgoing = (prevVideoIdx !== null && prevVideoIdx !== undefined) ? VIDEO_META[prevVideoIdx] : null;
     if (outgoing?.dmId && lastKnownTime > 0) {
       fsSet('resume', docId(currentUser.email, outgoing.dmId), {
         user_email: currentUser.email, dm_id: outgoing.dmId,
@@ -921,13 +903,8 @@
   function stopSeekPoll() {
     clearInterval(seekPollInterval); seekPollInterval = null;
     if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
-    const meta = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
-    if (meta?.dmId && lastKnownTime > 0 && currentUser) {
-      fsSet('resume', docId(currentUser.email, meta.dmId), {
-        user_email: currentUser.email, dm_id: meta.dmId,
-        position_seconds: Math.floor(lastKnownTime), updated_at: new Date().toISOString(),
-      }).catch(e => console.error('stopSeekPoll flush:', e));
-    }
+    // Note: resume position flush on video switch is handled in createDMPlayer
+    // Resume position flush on page close is handled by pause/end events
   }
 
   const BTN_LABEL = { watching: '⏳ Watch to complete', ready: '✓ Mark Complete', completed: '✓ Completed' };
@@ -984,11 +961,13 @@
       return;
     }
     if (typeof DM === 'undefined') { pendingIdx = index; showToast('Player is loading — your video will start shortly…', ''); return; }
+
+    const prevVideoIdx = currentVideoIdx;  // capture BEFORE updating — used in createDMPlayer flush
     currentVideoIdx = index;
     const resumeAt  = resumeData[meta.dmId] || 0;
     maxReachedTime  = completed.has(meta.dmId) ? Infinity : resumeAt;
     showAllPlayerStates('player');
-    createDMPlayer(meta.dmId, resumeAt);
+    createDMPlayer(meta.dmId, resumeAt, prevVideoIdx);
     document.getElementById('now-playing-bar').style.display   = 'flex';
     document.getElementById('fullscreen-btn').style.display    = 'flex';
     document.querySelector('.np-pulse').style.display          = '';
