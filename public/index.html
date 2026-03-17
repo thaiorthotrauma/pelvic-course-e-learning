@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>4th TOTS International Pelvic Course</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --navy:       #0d1b3e;
@@ -360,14 +359,24 @@
 
 <div id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
   /* ═══════════════════════════════════════════════
-     CONFIG — Supabase + Gmail OAuth
+     FIREBASE CONFIG
   ═══════════════════════════════════════════════ */
-  const SUPABASE_URL  = 'https://akexkcjzgnlqlqrfxtdi.supabase.co';
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrZXhrY2p6Z25scWxxcmZ4dGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNTk4NzQsImV4cCI6MjA4NzczNTg3NH0.U0ehcz04UVgZczjIAyq8opzd7j-AqZZM4V7XngBdwIA';
-  const _db           = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-  const OAUTH_CLIENT_ID = '689388160265-4k2pfclg7ujodrubnccg2ib68i8tfh9l.apps.googleusercontent.com';
+  const firebaseConfig = {
+    apiKey:            'AIzaSyB97y-iuqOa3-yeCJUEeT5iqGnrZYbpt3M',
+    authDomain:        'tots-pelvic-course-e-learning.firebaseapp.com',
+    projectId:         'tots-pelvic-course-e-learning',
+    storageBucket:     'tots-pelvic-course-e-learning.firebasestorage.app',
+    messagingSenderId: '769073509073',
+    appId:             '1:769073509073:web:042152fb774b62a72fcbf0',
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
 
   /* ═══════════════════════════════════════════════
      VIDEO METADATA  (dmId: Dailymotion video ID)
@@ -382,8 +391,8 @@
     { title: "Lecture 7",           subtitle: "Ilioinguinal approach",                                                     instructor: "Rahat Jarayabhand, MD",         dmId: "xa20q18" },
     { title: "Lecture 8",           subtitle: "Iliofemoral and ASIS osteotomy approaches",                                 instructor: "Direk Tantigate, MD",           dmId: "xa20q14" },
     { title: "Lecture 9",           subtitle: "Kocher-Langenbeck approach",                                                instructor: "Vajara Phiphobmongkol, MD",     dmId: "xa20q10" },
-    { title: "Lecture 10",          subtitle: "Clinical usage of Gibson interval and trochanteric flip osteotomy",         instructor: "Pongsakorn Bupparenoo, MD",     dmId: "xa20q1c" },
-    { title: "Lecture 11",          subtitle: "Extensile approach",                                                        instructor: "Kitchai Luksameearunothai, MD", dmId: "xa22uyg" },
+    { title: "Lecture 10",         subtitle: "Clinical usage of Gibson interval and trochanteric flip osteotomy",         instructor: "Pongsakorn Bupparenoo, MD",     dmId: "xa20q1c" },
+    { title: "Lecture 11",         subtitle: "Extensile approach",                                                        instructor: "Kitchai Luksameearunothai, MD", dmId: "xa22uyg" },
     { title: "Surgical Approach 1", subtitle: "Kocher-Langenbeck approach",                                                instructor: "Rahat Jarayabhand, MD",         dmId: "xa22uyi" },
     { title: "Surgical Approach 2", subtitle: "Gibson interval and trochanteric flip osteotomy approaches",                instructor: "Kitchai Luksameearunothai, MD", dmId: "xa22uyc" },
     { title: "Surgical Approach 3", subtitle: "Ilioinguinal approach",                                                     instructor: "Rahat Jarayabhand, MD",         dmId: "xa22uy2" },
@@ -399,11 +408,10 @@
   ═══════════════════════════════════════════════ */
   let currentUser      = null;
   let completed        = new Set();
-  let resumeData       = {};   // { dmId: seconds } — loaded from Supabase, updated in memory
+  let resumeData       = {};
   let currentVideoIdx  = null;
-  let emailSentKey     = '';   // localStorage key for one-time email flag
+  let emailSentKey     = '';
 
-  // Dailymotion player state
   let dmPlayer         = null;
   let dmReady          = false;
   let pendingIdx       = null;
@@ -413,6 +421,7 @@
   let saveThrottle     = null;
   let seekPollInterval = null;
   let isFakeFs         = false;
+  let _appInitializing = false;
 
   /* ═══════════════════════════════════════════════
      HELPERS
@@ -426,42 +435,59 @@
     const el = document.getElementById('signin-status');
     if (el) { el.textContent = msg; el.style.color = isError ? '#fca5a5' : 'rgba(147,197,253,0.5)'; }
   }
+  // Firestore document ID: safe composite key from email + dmId
+  function docId(email, dmId) {
+    return email.replace(/[@.]/g, '_') + '__' + dmId;
+  }
 
   /* ═══════════════════════════════════════════════
-     AUTH — Supabase + Google OAuth
+     AUTH — Firebase Google Sign-In
   ═══════════════════════════════════════════════ */
-  let _appInitializing = false;  // lock prevents race between getSession + onAuthStateChange
 
-  // On page load: check for existing session (handles post-OAuth redirect)
   window.addEventListener('load', async () => {
-    const { data: { session } } = await _db.auth.getSession();
-    if (session && !currentUser && !_appInitializing) {
-      await initApp(session);
-    }
-  });
+    // Handle redirect result first (mobile sign-in flow)
+    try {
+      const result = await auth.getRedirectResult();
+      if (result && result.user && !_appInitializing) {
+        const token = result.credential?.accessToken || null;
+        if (token) sessionStorage.setItem('google_access_token', token);
+        await initApp(result.user);
+        return;
+      }
+    } catch(e) { console.warn('getRedirectResult:', e.message); }
 
-  // Listen for auth state changes (sign-in redirect returns here)
-  _db.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session && !currentUser && !_appInitializing) {
-      await initApp(session);
-    }
-    // SIGNED_OUT is handled by signOut() directly — no reload here to avoid double reload
+    // Then check for existing session
+    auth.onAuthStateChanged(async (user) => {
+      if (user && !currentUser && !_appInitializing) {
+        await initApp(user);
+      }
+    });
   });
 
   async function signIn() {
-    setStatus('Redirecting to Google…', false);
-    document.getElementById('google-signin-btn').disabled = true;
-    const { error } = await _db.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        // Request Gmail send scope so we can send the certificate email
-        scopes: 'https://www.googleapis.com/auth/gmail.send',
-        redirectTo: window.location.href,
-      },
-    });
-    if (error) {
-      setStatus('⚠ Sign-in error: ' + error.message, true);
-      document.getElementById('google-signin-btn').disabled = false;
+    setStatus('Signing in with Google…', false);
+    const btn = document.getElementById('google-signin-btn');
+    btn.disabled = true;
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/gmail.send');
+
+    try {
+      // Try popup (desktop)
+      const result = await auth.signInWithPopup(provider);
+      const token = result.credential?.accessToken || null;
+      if (token) sessionStorage.setItem('google_access_token', token);
+      await initApp(result.user);
+    } catch(e) {
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
+        // Fallback to redirect (mobile)
+        const provider2 = new firebase.auth.GoogleAuthProvider();
+        provider2.addScope('https://www.googleapis.com/auth/gmail.send');
+        await auth.signInWithRedirect(provider2);
+      } else {
+        setStatus('⚠ Sign-in error: ' + e.message, true);
+        btn.disabled = false;
+      }
     }
   }
 
@@ -469,34 +495,28 @@
     stopSeekPoll();
     if (isFakeFs) exitFakeFullscreen();
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} }
-    await _db.auth.signOut();
-    // Reload once here — onAuthStateChange SIGNED_OUT listener removed to prevent double reload
+    sessionStorage.removeItem('google_access_token');
+    await auth.signOut();
     location.reload();
   }
 
-  async function initApp(session) {
+  async function initApp(user) {
+    if (_appInitializing) return;
     _appInitializing = true;
+
     currentUser = {
-      name:        session.user.user_metadata?.full_name || session.user.email,
-      email:       session.user.email,
-      picture:     session.user.user_metadata?.avatar_url || '',
-      accessToken: session.provider_token || null,  // Google OAuth token — used for Gmail
+      name:        user.displayName || user.email,
+      email:       user.email,
+      picture:     user.photoURL || '',
+      accessToken: sessionStorage.getItem('google_access_token') || null,
     };
     emailSentKey = `tots_emailsent_${currentUser.email}`;
 
-    // Show app, hide login
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('user-name').textContent = currentUser.name.split(' ')[0];
     document.getElementById('user-avatar').src = currentUser.picture;
 
-    // Load progress + resume positions from Supabase
-    // Test connection first — surface any auth/RLS issues visibly
-    const { error: testError } = await _db.from('progress').select('id').limit(1);
-    if (testError) {
-      showToast('⚠ Database error: ' + testError.message, 'error');
-      console.error('Supabase connection test failed:', testError);
-    }
     await Promise.all([loadProgress(), loadResumePositions()]);
 
     loadDailymotionSDK();
@@ -507,7 +527,6 @@
       if (card) playVideo(parseInt(card.dataset.index, 10));
     });
 
-    // Block keyboard seek shortcuts when DM iframe is focused
     document.addEventListener('keydown', (e) => {
       const seekKeys = ['ArrowLeft', 'ArrowRight', 'j', 'J', 'l', 'L'];
       if (seekKeys.includes(e.key) && document.activeElement?.id === 'dm-iframe') {
@@ -518,97 +537,82 @@
   }
 
   /* ═══════════════════════════════════════════════
-     GMAIL OAUTH — kept separate for certificate email
-     Supabase provider_token works if user just signed in.
-     Falls back to Google token client if expired.
+     GMAIL — uses Google access token from sign-in
   ═══════════════════════════════════════════════ */
-  let tokenClient = null;
-
-  function ensureTokenClient() {
-    if (tokenClient) return;
-    if (typeof google === 'undefined') return;
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: OAUTH_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/gmail.send',
-      callback: () => {},
-      error_callback: (e) => console.warn('OAuth error:', e?.message),
-    });
-  }
-
-  function getGmailToken(onSuccess, onFail) {
-    // First try the provider_token from Supabase session
-    if (currentUser.accessToken) { onSuccess(); return; }
-    // Fallback: request via Google token client
-    ensureTokenClient();
-    if (!tokenClient) { onFail('Gmail token not available.'); return; }
-    const tryPrompt = (prompt) => {
-      tokenClient.callback = (res) => {
-        if (res.access_token) { currentUser.accessToken = res.access_token; onSuccess(); }
-        else { onFail('Permission denied.'); }
-      };
-      tokenClient.error_callback = (e) => {
-        if (prompt === 'none') tryPrompt('consent');
-        else onFail(e?.message || 'Token error');
-      };
-      tokenClient.requestAccessToken({ prompt });
-    };
-    tryPrompt('none');
+  async function ensureGmailToken() {
+    if (currentUser.accessToken) return true;
+    // Token not available (old session) — re-auth silently via popup
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/gmail.send');
+      const result = await auth.signInWithPopup(provider);
+      const token = result.credential?.accessToken || null;
+      if (token) {
+        currentUser.accessToken = token;
+        sessionStorage.setItem('google_access_token', token);
+        return true;
+      }
+    } catch(e) { console.warn('token refresh:', e.message); }
+    return false;
   }
 
   /* ═══════════════════════════════════════════════
-     PROGRESS — Supabase
+     PROGRESS — Firestore
   ═══════════════════════════════════════════════ */
   async function loadProgress() {
-    const { data, error } = await _db
-      .from('progress')
-      .select('dm_id')
-      .eq('user_email', currentUser.email);
-    if (error) {
-      console.error('loadProgress error:', error);
-      showToast('⚠ Could not load progress: ' + error.message, 'error');
-      return;
+    try {
+      const snap = await db.collection('progress')
+        .where('user_email', '==', currentUser.email).get();
+      completed = new Set(snap.docs.map(d => d.data().dm_id));
+      console.log('loadProgress: loaded', snap.docs.length, 'rows');
+    } catch(e) {
+      console.error('loadProgress error:', e);
+      showToast('⚠ Could not load progress: ' + e.message, 'error');
     }
-    console.log('loadProgress: loaded', data.length, 'rows');
-    completed = new Set(data.map(r => r.dm_id));
   }
 
   function markDone(dmId) {
     completed.add(dmId);
-    _db.from('progress').upsert({
+    db.collection('progress').doc(docId(currentUser.email, dmId)).set({
       user_email:   currentUser.email,
       dm_id:        dmId,
-      completed_at: new Date().toISOString(),
-    }, { onConflict: 'user_email,dm_id' })
-    .then(({ error }) => {
-      if (error) {
-        console.error('markDone error:', error);
-        showToast('⚠ Could not save progress: ' + error.message, 'error');
-      } else {
-        console.log('markDone: saved', dmId);
-      }
+      completed_at: firebase.firestore.FieldValue.serverTimestamp(),
+    }).then(() => {
+      console.log('markDone: saved', dmId);
+    }).catch(e => {
+      console.error('markDone error:', e);
+      showToast('⚠ Could not save progress: ' + e.message, 'error');
     });
   }
 
   async function clearAllProgress() {
-    const { error } = await _db
-      .from('progress')
-      .delete()
-      .eq('user_email', currentUser.email);
-    if (error) console.warn('clearProgress error:', error.message);
+    try {
+      const snap = await db.collection('progress')
+        .where('user_email', '==', currentUser.email).get();
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch(e) { console.error('clearAllProgress:', e); }
     completed = new Set();
   }
 
   /* ═══════════════════════════════════════════════
-     RESUME POSITIONS — Supabase
+     RESUME — Firestore
   ═══════════════════════════════════════════════ */
   async function loadResumePositions() {
-    const { data, error } = await _db
-      .from('resume')
-      .select('dm_id, position_seconds')
-      .eq('user_email', currentUser.email);
-    if (error) { console.warn('loadResume error:', error.message); return; }
-    resumeData = {};
-    data.forEach(r => { resumeData[r.dm_id] = r.position_seconds; });
+    try {
+      const snap = await db.collection('resume')
+        .where('user_email', '==', currentUser.email).get();
+      resumeData = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        resumeData[data.dm_id] = data.position_seconds;
+      });
+      console.log('loadResume: loaded', snap.docs.length, 'rows');
+    } catch(e) {
+      console.error('loadResumePositions error:', e);
+      showToast('⚠ Could not load resume positions: ' + e.message, 'error');
+    }
   }
 
   function saveResumePosition(dmId, seconds) {
@@ -616,20 +620,16 @@
     resumeData[dmId] = pos;
     if (!saveThrottle) {
       saveThrottle = setTimeout(() => {
-        const payload = {
+        const savedPos = resumeData[dmId] ?? pos;
+        db.collection('resume').doc(docId(currentUser.email, dmId)).set({
           user_email:       currentUser.email,
           dm_id:            dmId,
-          position_seconds: resumeData[dmId] ?? pos,
-          updated_at:       new Date().toISOString(),
-        };
-        _db.from('resume').upsert(payload, { onConflict: 'user_email,dm_id' })
-        .then(({ error }) => {
-          if (error) {
-            console.error('saveResumePosition error:', error);
-            showToast('⚠ Could not save position: ' + error.message, 'error');
-          } else {
-            console.log('saveResumePosition: saved', dmId, 'at', payload.position_seconds, 's');
-          }
+          position_seconds: savedPos,
+          updated_at:       firebase.firestore.FieldValue.serverTimestamp(),
+        }).then(() => {
+          console.log('saveResume:', dmId, 'at', savedPos, 's');
+        }).catch(e => {
+          console.error('saveResumePosition error:', e);
         });
         saveThrottle = null;
       }, 5000);
@@ -638,19 +638,18 @@
 
   function clearResumePosition(dmId) {
     delete resumeData[dmId];
-    _db.from('resume')
-      .delete()
-      .eq('user_email', currentUser.email)
-      .eq('dm_id', dmId)
-      .then(({ error }) => { if (error) console.warn('resume delete:', error.message); });
+    db.collection('resume').doc(docId(currentUser.email, dmId)).delete()
+      .catch(e => console.error('clearResumePosition:', e));
   }
 
   async function clearAllResume() {
-    const { error } = await _db
-      .from('resume')
-      .delete()
-      .eq('user_email', currentUser.email);
-    if (error) console.warn('clearResume error:', error.message);
+    try {
+      const snap = await db.collection('resume')
+        .where('user_email', '==', currentUser.email).get();
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch(e) { console.error('clearAllResume:', e); }
     resumeData = {};
   }
 
@@ -660,7 +659,6 @@
     document.getElementById('progress-fill').style.width = pct + '%';
     document.getElementById('progress-pct').textContent  = pct + '%';
   }
-
   function countDone() {
     return VIDEO_META.filter(v => v.dmId && completed.has(v.dmId)).length;
   }
@@ -693,16 +691,16 @@
       dmPlayer = null;
       dmReady  = false;
     }
-    // Flush any pending resume save for the outgoing video before switching
+    // Flush pending resume save for outgoing video
     if (saveThrottle) {
       clearTimeout(saveThrottle); saveThrottle = null;
       const outgoing = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
       if (outgoing?.dmId && lastKnownTime > 0) {
-        _db.from('resume').upsert({
+        db.collection('resume').doc(docId(currentUser.email, outgoing.dmId)).set({
           user_email: currentUser.email, dm_id: outgoing.dmId,
-          position_seconds: Math.floor(lastKnownTime), updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_email,dm_id' })
-        .then(({ error }) => { if (error) console.warn('flush resume:', error.message); });
+          position_seconds: Math.floor(lastKnownTime),
+          updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+        }).catch(e => console.error('flush resume:', e));
       }
     }
     isSeeking     = false;
@@ -722,8 +720,7 @@
     iframe.src             = `https://www.dailymotion.com/embed/video/${dmId}?${params}`;
     const oldIframe = wrap.querySelector('iframe');
     if (oldIframe) oldIframe.remove();
-    const seekBlock = document.getElementById('seek-block');
-    wrap.insertBefore(iframe, seekBlock);
+    wrap.insertBefore(iframe, document.getElementById('seek-block'));
 
     function attachDMEvents() {
       if (typeof DM === 'undefined' || !DM.Player) return;
@@ -809,7 +806,6 @@
       }
     }, 500);
   }
-
   function stopSeekPoll() {
     clearInterval(seekPollInterval); seekPollInterval = null;
     if (saveThrottle) {
@@ -865,7 +861,6 @@
     const meta = VIDEO_META[index];
     if (!meta) return;
 
-    // Lock: find nearest previous available lesson
     if (index > 0) {
       for (let p = index - 1; p >= 0; p--) {
         if (VIDEO_META[p]?.dmId) {
@@ -875,14 +870,13 @@
       }
     }
 
-    // Coming-soon
     if (!meta.dmId) {
       stopSeekPoll();
       if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} }
       showAllPlayerStates('coming-soon');
-      document.getElementById('lesson-info').style.display = 'block';
+      document.getElementById('lesson-info').style.display    = 'block';
       document.getElementById('now-playing-bar').style.display = 'flex';
-      document.getElementById('fullscreen-btn').style.display = 'none';
+      document.getElementById('fullscreen-btn').style.display  = 'none';
       document.getElementById('now-playing-title').textContent = `${meta.title} — coming soon`;
       document.getElementById('hero-title').textContent    = meta.title;
       document.getElementById('hero-subtitle').textContent = meta.instructor;
@@ -906,10 +900,10 @@
     showAllPlayerStates('player');
     createDMPlayer(meta.dmId, resumeAt);
 
-    document.getElementById('now-playing-bar').style.display = 'flex';
-    document.getElementById('fullscreen-btn').style.display  = 'flex';
-    document.getElementById('now-playing-title').textContent = `${meta.title} — ${meta.subtitle}`;
-    document.getElementById('lesson-info').style.display     = 'block';
+    document.getElementById('now-playing-bar').style.display   = 'flex';
+    document.getElementById('fullscreen-btn').style.display    = 'flex';
+    document.getElementById('now-playing-title').textContent   = `${meta.title} — ${meta.subtitle}`;
+    document.getElementById('lesson-info').style.display       = 'block';
     document.getElementById('hero-title').textContent    = `${meta.title}: ${meta.subtitle}`;
     document.getElementById('hero-subtitle').textContent = meta.instructor;
 
@@ -934,13 +928,11 @@
     if (!meta?.dmId) return;
     const btn = document.getElementById('mark-complete-btn');
     if (btn.dataset.state !== 'ready') return;
-
     markDone(meta.dmId);
     updateProgressBar();
     refreshCards();
     setBtnState('completed');
     showToast('Lesson marked as complete ✓', 'success');
-
     if (countDone() >= AVAILABLE_COUNT) setTimeout(showCompletionPage, 800);
   }
 
@@ -1018,12 +1010,10 @@
         </div>`;
       grid.appendChild(card);
     });
-
     const cnt = document.getElementById('video-count');
     cnt.textContent  = `${AVAILABLE_COUNT} of ${VIDEO_META.length} lesson${VIDEO_META.length !== 1 ? 's' : ''} available`;
     cnt.style.display = 'inline-block';
     grid.style.display = 'grid';
-
     refreshCards();
     updateProgressBar();
     if (countDone() >= AVAILABLE_COUNT && AVAILABLE_COUNT > 0) setTimeout(showCompletionPage, 300);
@@ -1047,19 +1037,14 @@
 
   async function resetCourse() {
     if (!confirm('Reset course progress? This will clear all completed lessons and resume positions. Your certificate has already been sent.')) return;
-
     stopSeekPoll();
     if (isFakeFs) exitFakeFullscreen();
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} dmPlayer = null; dmReady = false; }
     currentVideoIdx = null;
     maxReachedTime  = 0;
     lastKnownTime   = 0;
-
-    // Clear Supabase data
-    await Promise.all([ clearAllProgress(), clearAllResume() ]);
+    await Promise.all([clearAllProgress(), clearAllResume()]);
     localStorage.removeItem(emailSentKey);
-
-    // Reset UI
     hideCompletionPage();
     showAllPlayerStates('placeholder');
     document.getElementById('now-playing-bar').style.display   = 'none';
@@ -1084,24 +1069,25 @@
       return;
     }
     const status = document.getElementById('cp-email-status');
-    status.className = 'cp-email-status';
     status.textContent = '📧 Sending your certificate…';
 
-    const go = async () => {
-      const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-      try {
-        await sendEmailRaw(buildCertEmail(date, AVAILABLE_COUNT));
-        localStorage.setItem(emailSentKey, '1');
-        status.className = 'cp-email-status sent';
-        status.textContent = '✅ Certificate sent to ' + currentUser.email;
-      } catch (err) {
-        status.className = 'cp-email-status error';
-        status.textContent = '⚠ Email failed — ' + err.message;
-      }
-    };
+    const hasToken = await ensureGmailToken();
+    if (!hasToken) {
+      status.className = 'cp-email-status error';
+      status.textContent = '⚠ Gmail permission not available. Please sign out and sign back in.';
+      return;
+    }
 
-    if (currentUser.accessToken) { await go(); }
-    else { getGmailToken(go, () => { status.className = 'cp-email-status error'; status.textContent = '⚠ Email permission denied.'; }); }
+    const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    try {
+      await sendEmailRaw(buildCertEmail(date, AVAILABLE_COUNT));
+      localStorage.setItem(emailSentKey, '1');
+      status.className = 'cp-email-status sent';
+      status.textContent = '✅ Certificate sent to ' + currentUser.email;
+    } catch(err) {
+      status.className = 'cp-email-status error';
+      status.textContent = '⚠ Email failed — ' + err.message;
+    }
   }
 
   async function sendEmailRaw(mime) {
@@ -1138,11 +1124,11 @@
       `<table style="width:100%;border-collapse:collapse;text-align:center;background:#f0f4ff;border-radius:10px;margin-bottom:28px;"><tr>`,
       `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#22c55e;">${lessonCount}</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Lessons</div></td>`,
       `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#22c55e;">100%</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Complete</div></td>`,
-      `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#2563eb;">✓</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Verified</div></td>`,
+      `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#2563eb;">&#10003;</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Verified</div></td>`,
       `</tr></table>`,
       `<p style="font-size:13px;color:#6b7fa8;margin:0;">Date of completion: <strong style="color:#0d1b3e;">${date}</strong></p>`,
       `<hr style="border:none;border-top:1px solid #dde4f0;margin:24px 0"/>`,
-      `<p style="font-size:11px;color:#9caec7;">4th TOTS International Pelvic Course · Pre-course e-learning</p>`,
+      `<p style="font-size:11px;color:#9caec7;">4th TOTS International Pelvic Course &middot; Pre-course e-learning</p>`,
       `</div></div></body></html>`,
     ].join('\r\n');
   }
