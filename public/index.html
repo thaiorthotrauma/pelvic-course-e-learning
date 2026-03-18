@@ -349,7 +349,11 @@
     <div class="footer-inner">
       <span style="font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:rgba(255,255,255,0.65);letter-spacing:0.5px;text-align:right;">Thai Orthopedic Trauma Society (TOTS)</span>
       <span id="footer-date" style="font-size:11px;color:rgba(147,197,253,0.6);text-align:right;"></span>
-      <a href="https://pelvic-course-e-learning.thaiorthotrauma.deno.net/privacy" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:rgba(147,197,253,0.5);text-align:right;text-decoration:none;transition:color 0.15s;" onmouseenter="this.style.color='rgba(147,197,253,0.9)'" onmouseleave="this.style.color='rgba(147,197,253,0.5)'">Privacy Policy</a>
+      <div style="display:flex;gap:16px;justify-content:flex-end;flex-wrap:wrap;">
+        <a href="https://pelvic-course-e-learning.thaiorthotrauma.deno.net/privacy" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:rgba(147,197,253,0.5);text-decoration:none;transition:color 0.15s;" onmouseenter="this.style.color='rgba(147,197,253,0.9)'" onmouseleave="this.style.color='rgba(147,197,253,0.5)'">Privacy Policy</a>
+        <span style="font-size:11px;color:rgba(147,197,253,0.25);">·</span>
+        <a href="https://pelvic-course-e-learning.thaiorthotrauma.deno.net/terms" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:rgba(147,197,253,0.5);text-decoration:none;transition:color 0.15s;" onmouseenter="this.style.color='rgba(147,197,253,0.9)'" onmouseleave="this.style.color='rgba(147,197,253,0.5)'">Terms of Service</a>
+      </div>
     </div>
   </footer>
 </div>
@@ -443,13 +447,17 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        postBody:             `id_token=${googleIdToken}&providerId=google.com`,
-        requestUri:           window.location.href,
+        postBody:             `id_token=${encodeURIComponent(googleIdToken)}&providerId=google.com`,
+        requestUri:           window.location.origin + window.location.pathname,
         returnIdpCredential:  true,
         returnSecureToken:    true,
       }),
     });
-    if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || 'Auth failed'); }
+    if (!r.ok) {
+      let msg = 'Auth failed';
+      try { msg = (await r.json()).error?.message || msg; } catch(_) {}
+      throw new Error(msg);
+    }
     return r.json();
     // Returns: { idToken, refreshToken, expiresIn, email, displayName, photoUrl }
   }
@@ -462,7 +470,7 @@
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `grant_type=refresh_token&refresh_token=${currentUser.refreshToken}`,
+          body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(currentUser.refreshToken)}`,
         }
       );
       if (!r.ok) return false;
@@ -671,6 +679,30 @@
         document.activeElement.blur();
       }
     });
+
+    // Save position when user switches tabs or closes browser
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        const meta = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
+        if (meta?.dmId && lastKnownTime > 0 && currentUser) {
+          if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
+          // Use sendBeacon for reliability on page unload — falls back to fetch
+          const url = `${FS_BASE}/resume/${docId(currentUser.email, meta.dmId)}?updateMask.fieldPaths=position_seconds&updateMask.fieldPaths=updated_at&updateMask.fieldPaths=user_email&updateMask.fieldPaths=dm_id`;
+          const body = JSON.stringify({ fields: {
+            user_email:       { stringValue: currentUser.email },
+            dm_id:            { stringValue: meta.dmId },
+            position_seconds: { integerValue: String(Math.floor(lastKnownTime)) },
+            updated_at:       { stringValue: new Date().toISOString() },
+          }});
+          // fetch with keepalive for reliable save on page unload
+          fetch(url, {
+            method: 'PATCH', keepalive: true,
+            headers: { Authorization: `Bearer ${currentUser.idToken}`, 'Content-Type': 'application/json' },
+            body,
+          }).catch(() => {});
+        }
+      }
+    });
   }
 
   /* ═══════════════════════════════════════════════
@@ -690,8 +722,17 @@
             resolve(true);
           } else { resolve(false); }
         },
-        error_callback: () => resolve(false),
+        error_callback: (e) => {
+          // Silent attempt failed — try again with consent popup
+          if (e.type === 'popup_failed_to_open' || e.type === 'access_denied') {
+            resolve(false);
+          } else {
+            // Retry with explicit consent prompt
+            tc.requestAccessToken({ prompt: 'consent' });
+          }
+        },
       });
+      // Try silently first; if token already granted in Google's session this works instantly
       tc.requestAccessToken({ prompt: 'none' });
     });
   }
@@ -748,6 +789,8 @@
     resumeData[dmId] = pos;
     if (!saveThrottle) {
       saveThrottle = setTimeout(() => {
+        saveThrottle = null;
+        if (!currentUser) return;  // user may have signed out before throttle fires
         const savedPos = resumeData[dmId] ?? pos;
         fsSet('resume', docId(currentUser.email, dmId), {
           user_email:       currentUser.email,
@@ -756,7 +799,6 @@
           updated_at:       new Date().toISOString(),
         }).then(() => console.log('saveResume:', dmId, 'at', savedPos, 's'))
           .catch(e => console.error('saveResumePosition:', e));
-        saveThrottle = null;
       }, 5000);
     }
   }
@@ -804,9 +846,8 @@
   }
 
   function createDMPlayer(dmId, startAt, prevVideoIdx) {
-    stopSeekPoll();
+    stopSeekPoll();  // clears seekPollInterval and flushes any pending saveThrottle
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} dmPlayer = null; dmReady = false; }
-    if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
 
     // Flush outgoing video position using prevVideoIdx — currentVideoIdx already points to new video
     const outgoing = (prevVideoIdx !== null && prevVideoIdx !== undefined) ? VIDEO_META[prevVideoIdx] : null;
@@ -902,9 +943,19 @@
 
   function stopSeekPoll() {
     clearInterval(seekPollInterval); seekPollInterval = null;
-    if (saveThrottle) { clearTimeout(saveThrottle); saveThrottle = null; }
-    // Note: resume position flush on video switch is handled in createDMPlayer
-    // Resume position flush on page close is handled by pause/end events
+    if (saveThrottle) {
+      clearTimeout(saveThrottle); saveThrottle = null;
+      // Flush pending save immediately if we have a valid position and user
+      const meta = currentVideoIdx !== null ? VIDEO_META[currentVideoIdx] : null;
+      if (meta?.dmId && lastKnownTime > 0 && currentUser) {
+        fsSet('resume', docId(currentUser.email, meta.dmId), {
+          user_email:       currentUser.email,
+          dm_id:            meta.dmId,
+          position_seconds: Math.floor(lastKnownTime),
+          updated_at:       new Date().toISOString(),
+        }).catch(e => console.error('stopSeekPoll flush:', e));
+      }
+    }
   }
 
   const BTN_LABEL = { watching: '⏳ Watch to complete', ready: '✓ Mark Complete', completed: '✓ Completed' };
@@ -1102,12 +1153,50 @@
     const status = document.getElementById('cp-email-status');
     status.className = 'cp-email-status';
     status.textContent = '📧 Sending your certificate…';
+
     const hasToken = await ensureGmailToken();
     if (!hasToken) {
       status.className = 'cp-email-status error';
-      status.textContent = '⚠ Gmail permission not available. Please sign out and sign back in.';
+      status.innerHTML = '⚠ Gmail permission needed. <button onclick="retryCertEmail()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;">Grant access</button>';
       return;
     }
+    await _doSendCertEmail(status);
+  }
+
+  async function retryCertEmail() {
+    const status = document.getElementById('cp-email-status');
+    if (typeof google === 'undefined') {
+      status.className = 'cp-email-status error';
+      status.textContent = '⚠ Google Sign-In not available. Please reload the page.';
+      return;
+    }
+    status.className = 'cp-email-status';
+    status.textContent = '📧 Requesting Gmail permission…';
+    // Force consent prompt this time
+    const granted = await new Promise((resolve) => {
+      const tc = google.accounts.oauth2.initTokenClient({
+        client_id: OAUTH_CLIENT_ID,
+        scope:     'https://www.googleapis.com/auth/gmail.send',
+        callback:  (res) => {
+          if (res.access_token) {
+            currentUser.accessToken = res.access_token;
+            sessionStorage.setItem('google_access_token', res.access_token);
+            resolve(true);
+          } else { resolve(false); }
+        },
+        error_callback: () => resolve(false),
+      });
+      tc.requestAccessToken({ prompt: 'consent' });
+    });
+    if (!granted) {
+      status.className = 'cp-email-status error';
+      status.textContent = '⚠ Gmail access denied. Certificate not sent.';
+      return;
+    }
+    await _doSendCertEmail(status);
+  }
+
+  async function _doSendCertEmail(status) {
     const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     try {
       await sendEmailRaw(buildCertEmail(date, AVAILABLE_COUNT));
