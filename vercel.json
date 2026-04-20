@@ -2,8 +2,9 @@
   "buildCommand": "",
   "outputDirectory": ".",
   "rewrites": [
-    { "source": "/privacy", "destination": "/privacy/index.html" },
-    { "source": "/terms",   "destination": "/terms/index.html"   },
-    { "source": "/:path*",  "destination": "/public/:path*"      }
+    { "source": "/privacy",  "destination": "/privacy/index.html" },
+    { "source": "/terms",    "destination": "/terms/index.html"   },
+    { "source": "/",         "destination": "/public/index.html"  },
+    { "source": "/:path*",   "destination": "/public/:path*"      }
   ]
 }
