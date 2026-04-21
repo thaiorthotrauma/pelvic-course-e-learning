@@ -24,23 +24,23 @@ export default async function handler(req, res) {
 <p style="font-size:11px;color:#9caec7;">4th TOTS International Pelvic Course &middot; Pre-course e-learning</p>
 </div></div></body></html>`;
 
-  const r = await fetch('https://api.resend.com/emails', {
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      'api-key': process.env.BREVO_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'TOTS Pelvic Course <onboarding@resend.dev>',
-      to: [email],
+      sender: { name: 'TOTS Pelvic Course', email: 'pong.poti@gmail.com' },
+      to: [{ email }],
       subject: 'Certificate of Completion : 4th TOTS International Pelvic Course',
-      html,
+      htmlContent: html,
     }),
   });
 
   if (!r.ok) {
     const err = await r.json().catch(() => ({}));
-    return res.status(500).json({ error: err.message || 'Send failed' });
+    return res.status(500).json({ error: err.message || JSON.stringify(err) });
   }
 
   res.status(200).json({ ok: true });
