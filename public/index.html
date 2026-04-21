@@ -516,7 +516,7 @@
       if (!raw) return false;
       const s = JSON.parse(raw);
       if (!s.idToken || !s.refreshToken) return false;
-      currentUser = { ...s, accessToken: sessionStorage.getItem('google_access_token') || null };
+      currentUser = { ...s };
       // Try to refresh if needed
       if (Date.now() > s.expiresAt - 300000) {
         const ok = await refreshIdToken();
@@ -647,7 +647,7 @@
     if (isFakeFs) exitFakeFullscreen();
     if (dmPlayer) { try { dmPlayer.pause(); } catch(e) {} }
     sessionStorage.removeItem('tots_session');
-    sessionStorage.removeItem('google_access_token');
+
     if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
     currentUser = null;
     location.reload();
@@ -657,10 +657,6 @@
     if (_appInitializing) return;
     _appInitializing = true;
 
-    // Restore Google access token if available
-    if (!currentUser.accessToken) {
-      currentUser.accessToken = sessionStorage.getItem('google_access_token') || null;
-    }
     emailSentKey = `tots_emailsent_${currentUser.email}`;
 
     document.getElementById('login-screen').style.display = 'none';
@@ -708,38 +704,6 @@
           }).catch(() => {});
         }
       }
-    });
-  }
-
-  /* ═══════════════════════════════════════════════
-     GMAIL — Google access token for certificate
-  ═══════════════════════════════════════════════ */
-  async function ensureGmailToken() {
-    if (currentUser.accessToken) return true;
-    return new Promise((resolve) => {
-      if (typeof google === 'undefined') { resolve(false); return; }
-      const tc = google.accounts.oauth2.initTokenClient({
-        client_id: OAUTH_CLIENT_ID,
-        scope:     'https://www.googleapis.com/auth/gmail.send',
-        callback:  (res) => {
-          if (res.access_token) {
-            currentUser.accessToken = res.access_token;
-            sessionStorage.setItem('google_access_token', res.access_token);
-            resolve(true);
-          } else { resolve(false); }
-        },
-        error_callback: (e) => {
-          // Silent attempt failed — try again with consent popup
-          if (e.type === 'popup_failed_to_open' || e.type === 'access_denied') {
-            resolve(false);
-          } else {
-            // Retry with explicit consent prompt
-            tc.requestAccessToken({ prompt: 'consent' });
-          }
-        },
-      });
-      // Try silently first; if token already granted in Google's session this works instantly
-      tc.requestAccessToken({ prompt: 'none' });
     });
   }
 
@@ -1159,53 +1123,17 @@
     const status = document.getElementById('cp-email-status');
     status.className = 'cp-email-status';
     status.textContent = '📧 Sending your certificate…';
-
-    const hasToken = await ensureGmailToken();
-    if (!hasToken) {
-      status.className = 'cp-email-status error';
-      status.innerHTML = '⚠ Gmail permission needed. <button onclick="retryCertEmail()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;">Grant access</button>';
-      return;
-    }
-    await _doSendCertEmail(status);
-  }
-
-  async function retryCertEmail() {
-    const status = document.getElementById('cp-email-status');
-    if (typeof google === 'undefined') {
-      status.className = 'cp-email-status error';
-      status.textContent = '⚠ Google Sign-In not available. Please reload the page.';
-      return;
-    }
-    status.className = 'cp-email-status';
-    status.textContent = '📧 Requesting Gmail permission…';
-    // Force consent prompt this time
-    const granted = await new Promise((resolve) => {
-      const tc = google.accounts.oauth2.initTokenClient({
-        client_id: OAUTH_CLIENT_ID,
-        scope:     'https://www.googleapis.com/auth/gmail.send',
-        callback:  (res) => {
-          if (res.access_token) {
-            currentUser.accessToken = res.access_token;
-            sessionStorage.setItem('google_access_token', res.access_token);
-            resolve(true);
-          } else { resolve(false); }
-        },
-        error_callback: () => resolve(false),
-      });
-      tc.requestAccessToken({ prompt: 'consent' });
-    });
-    if (!granted) {
-      status.className = 'cp-email-status error';
-      status.textContent = '⚠ Gmail access denied. Certificate not sent.';
-      return;
-    }
-    await _doSendCertEmail(status);
-  }
-
-  async function _doSendCertEmail(status) {
     const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     try {
-      await sendEmailRaw(buildCertEmail(date, AVAILABLE_COUNT));
+      const r = await fetch('/api/send-certificate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentUser.email, name: currentUser.name, date, lessonCount: AVAILABLE_COUNT }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || 'Send failed');
+      }
       localStorage.setItem(emailSentKey, '1');
       status.className = 'cp-email-status sent';
       status.textContent = '✅ Certificate sent to ' + currentUser.email;
@@ -1213,49 +1141,6 @@
       status.className = 'cp-email-status error';
       status.textContent = '⚠ Email failed — ' + err.message;
     }
-  }
-
-  async function sendEmailRaw(mime) {
-    const bytes   = new TextEncoder().encode(mime);
-    const binary  = Array.from(bytes, b => String.fromCharCode(b)).join('');
-    const encoded = btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${currentUser.accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw: encoded }),
-    });
-    if (!r.ok) {
-      let msg = 'Send failed';
-      try { msg = (await r.json()).error?.message || msg; } catch(_) { msg = `Send failed (HTTP ${r.status})`; }
-      throw new Error(msg);
-    }
-  }
-
-  function buildCertEmail(date, lessonCount) {
-    return [
-      `From: ${currentUser.email}`, `To: ${currentUser.email}`,
-      `Subject: Certificate of Completion : 4th TOTS International Pelvic Course`,
-      `MIME-Version: 1.0`, `Content-Type: text/html; charset=UTF-8`, ``,
-      `<html><body style="margin:0;padding:0;background:#f0f4ff;font-family:sans-serif;">`,
-      `<div style="max-width:600px;margin:0 auto;padding:32px 16px;">`,
-      `<div style="background:linear-gradient(135deg,#0d1b3e,#1e3063);border-radius:12px 12px 0 0;padding:36px 32px;text-align:center;">`,
-      `<div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#93c5fd;margin-bottom:8px;">4TH TOTS INTERNATIONAL PELVIC COURSE</div>`,
-      `<h1 style="font-size:26px;color:#fff;margin:0;font-weight:800;">Certificate of Completion</h1></div>`,
-      `<div style="height:4px;background:linear-gradient(90deg,#f59e0b,#fbbf24);"></div>`,
-      `<div style="background:#fff;border-radius:0 0 12px 12px;padding:40px 32px;text-align:center;">`,
-      `<p style="font-size:13px;color:#6b7fa8;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">This certifies that</p>`,
-      `<p style="font-size:30px;font-weight:800;color:#0d1b3e;margin:0 0 6px;">${currentUser.name}</p>`,
-      `<p style="font-size:14px;color:#6b7fa8;margin:0 0 28px;">has successfully completed all pre-course e-learning lessons</p>`,
-      `<table style="width:100%;border-collapse:collapse;text-align:center;background:#f0f4ff;border-radius:10px;margin-bottom:28px;"><tr>`,
-      `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#22c55e;">${lessonCount}</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Lessons</div></td>`,
-      `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#22c55e;">100%</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Complete</div></td>`,
-      `<td style="padding:16px;"><div style="font-size:28px;font-weight:800;color:#2563eb;">&#10003;</div><div style="font-size:11px;color:#6b7fa8;text-transform:uppercase;">Verified</div></td>`,
-      `</tr></table>`,
-      `<p style="font-size:13px;color:#6b7fa8;margin:0;">Date of completion: <strong style="color:#0d1b3e;">${date}</strong></p>`,
-      `<hr style="border:none;border-top:1px solid #dde4f0;margin:24px 0"/>`,
-      `<p style="font-size:11px;color:#9caec7;">4th TOTS International Pelvic Course &middot; Pre-course e-learning</p>`,
-      `</div></div></body></html>`,
-    ].join('\r\n');
   }
 
   function activateTestMode() {
