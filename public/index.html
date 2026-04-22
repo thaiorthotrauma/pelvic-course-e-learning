@@ -341,12 +341,6 @@
         <h2 class="section-title">Course Lessons</h2>
         <span id="video-count"></span>
       </div>
-      <button id="test-mode-btn" onclick="activateTestMode()"
-        style="font-size:11px;font-weight:600;color:rgba(107,127,168,0.5);background:none;border:1px dashed rgba(107,127,168,0.25);border-radius:6px;padding:5px 10px;cursor:pointer;transition:all 0.15s;"
-        onmouseenter="this.style.color='#6b7fa8';this.style.borderColor='#6b7fa8';"
-        onmouseleave="this.style.color='rgba(107,127,168,0.5)';this.style.borderColor='rgba(107,127,168,0.25)';">
-        ⚙ Test Mode
-      </button>
     </div>
     <div id="grid"></div>
   </main>
@@ -1106,7 +1100,6 @@
     document.getElementById('lesson-info').style.display       = 'none';
     document.getElementById('hero-title').textContent          = '';
     document.getElementById('hero-subtitle').textContent       = '';
-    document.getElementById('test-mode-btn').style.display     = '';
     document.querySelector('.np-pulse').style.display          = '';
     document.querySelector('.np-label').textContent            = 'Now Playing';
     updateProgressBar(); refreshCards();
@@ -1143,15 +1136,6 @@
     }
   }
 
-  function activateTestMode() {
-    localStorage.removeItem(emailSentKey);
-    VIDEO_META.forEach(m => { if (m.dmId) markDone(m.dmId); });
-    updateProgressBar(); refreshCards();
-    const btn = document.getElementById('test-mode-btn');
-    if (btn) btn.style.display = 'none';
-    showToast('Test mode: all lessons marked complete ✓', 'success');
-    setTimeout(showCompletionPage, 800);
-  }
 
   let toastTimer;
   function showToast(msg, type = '') {
